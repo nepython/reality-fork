@@ -65,7 +65,7 @@ const safeJoin = (base, rel) => { const p = path.resolve(base, '.' + path.posix.
 async function plateFor(clip) {
   // With an analysed run, the object's own SAM masks (grown by a margin for blur and shadow) keep it out of the plate.
   const run = latestRun(clip.id), obj = run?.report?.object, prompt = run?.prompts?.[obj];
-  const file = path.join(ASSETS, hashOf(clip.file, 'plate', prompt || '', obj || '') + '.jpg');
+  const file = path.join(ASSETS, hashOf(clip.id, 'plate', prompt || '', obj || '') + '.jpg');
   if (!fs.existsSync(file) || !fs.existsSync(file.replace(/\.jpg$/, '.json'))) {
     const masks = prompt ? await masksFor(clip, run, obj) : null;
     const pad = 8;
@@ -94,7 +94,7 @@ function near(m, x, y, pad) {
 
 // The object's sprite: cut from the frame where it moves least (sharpest), using SAM's mask, as an RGBA PNG.
 async function spriteFor(clip, run, objectKey) {
-  const file = path.join(ASSETS, hashOf(clip.file, run.prompts?.[objectKey] || objectKey, 'sprite') + '.png');
+  const file = path.join(ASSETS, hashOf(clip.id, run.prompts?.[objectKey] || objectKey, 'sprite') + '.png');
   const meta = file.replace(/\.png$/, '.json');
   if (fs.existsSync(file) && fs.existsSync(meta)) return {file, meta: JSON.parse(fs.readFileSync(meta, 'utf8'))};
   const masks = await masksFor(clip, run, objectKey);
@@ -232,7 +232,7 @@ async function api(req, res, url) {
     };
     if (!worlds[body.world]) return send(res, 400, {error: 'unknown world'});
     const plate = fs.readFileSync(await plateFor(clip)), info = clipInfo(clip);
-    const out = path.join(ASSETS, hashOf(clip.file, body.world, 'restyle') + '.jpg');
+    const out = path.join(ASSETS, hashOf(clip.id, body.world, 'restyle') + '.jpg');
     if (!fs.existsSync(out)) {
       // Only a new picture is paid for, so only that counts against the hourly limit.
       if (!allowLive(req)) return send(res, 429, {error: 'limit reached'});

@@ -97,6 +97,10 @@ node bench/run.mjs                   # run the agent on them and score it (paid 
 Requires Node 20+ and ffmpeg. Paid calls go through a ledger with a budget cap (`RF_BUDGET_USD`, default $25) and
 a disk cache, so replaying a finished run costs nothing. A typical live analysis costs about $0.02–0.15.
 
+**Deploy.** `docker build -t reality-fork . && docker run -p 7860:7860 -e MODEL_API_KEY=... reality-fork`. A fresh
+container seeds its cache from `demo/` (the samples' runs and SAM results, exported by `node scripts/export-demo.mjs`),
+so the samples replay for free; live runs are limited per visitor (`RF_LIVE_PER_HOUR`, default 6) and by the cap.
+
 ## Limits
 
 Measurements assume a still camera and motion roughly in a plane facing it, with the scale object at the same distance.
