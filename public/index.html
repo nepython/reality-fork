@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reality Fork</title>
+<meta name="description" content="Film anything that moves. Get its physics. Then change them. Built on Meta's SAM 3.1 and Muse models.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 30V17M16 17C16 10 7 9 7 2M16 17c0-7 9-8 9-15' stroke='%2300c8ff' stroke-width='3.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><path d="M16 30V17M16 17C16 10 7 9 7 2M16 17c0-7 9-8 9-15" /></svg>
+    <div>
+      <h1>Reality Fork</h1>
+      <p class="tag">Film anything that moves. Get its physics. Then change them.</p>
+    </div>
+  </div>
+  <div class="models" aria-label="Meta models used">
+    <span class="chip sam">SAM 3.1</span><span class="chip spark">Muse Spark</span><span class="chip image">Muse Image</span><span class="chip voice">Voice Transcribe</span>
+  </div>
+</header>
+
+<section class="rail" aria-label="Clips">
+  <div id="clips" class="clips"></div>
+</section>
+
+<main class="grid">
+  <section class="stage-col">
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted preload="auto" crossorigin="anonymous"></video>
+      <canvas id="overlay"></canvas>
+      <div class="stage-badge" id="stageBadge" hidden></div>
+      <div class="empty" id="stageEmpty">Pick a clip above, or drop your own video here.</div>
+    </div>
+    <div class="transport">
+      <button id="play" class="icon" title="Play / pause" aria-label="Play">▶</button>
+      <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Frame">
+      <span id="clock" class="mono">0.00 s</span>
+      <div class="toggles">
+        <label><input type="checkbox" id="showMask" checked> masks</label>
+        <label><input type="checkbox" id="showPath" checked> path</label>
+        <label><input type="checkbox" id="showLaw" checked> law</label>
+      </div>
+    </div>
+    <div class="forkbar" id="forkbar" hidden>
+      <div class="forkbar-head"><span class="label">Fork reality</span><span id="forkSummary" class="fork-summary"></span></div>
+      <div class="forks" id="forks"></div>
+      <label class="restyle"><input type="checkbox" id="restyle"> repaint the world with Muse Image</label>
+    </div>
+    <figure class="plot-wrap" id="plotWrap" hidden>
+      <svg id="plot" role="img" aria-label="Measured motion and fitted law"></svg>
+      <figcaption id="plotCaption"></figcaption>
+    </figure>
+  </section>
+
+  <aside class="notebook">
+    <form id="ask" class="ask">
+      <input id="question" type="text" placeholder="Ask about the motion… e.g. what is gravity here?" autocomplete="off">
+      <button type="button" id="mic" class="icon" title="Ask by voice (Muse Voice Transcribe)" aria-label="Ask by voice">🎙</button>
+      <button type="submit" id="run" class="primary">Run the lab</button>
+    </form>
+    <div class="nb-head"><span>Lab notebook</span><span id="nbState" class="muted"></span></div>
+    <ol id="steps" class="steps"></ol>
+    <div id="report"></div>
+  </aside>
+</main>
+
+<footer class="foot">
+  <span>Built for the Meta Global AI Developer Hackathon, Oct–Nov 2026.</span>
+  <span id="credit" class="muted"></span>
+</footer>
+
+<input type="file" id="file" accept="video/*" hidden>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
