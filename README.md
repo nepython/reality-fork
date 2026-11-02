@@ -57,7 +57,8 @@ flowchart LR
    scene changes behind the object (a launch's plume and lighting), no plate can be true, so the real object is veiled
    instead and both are marked with race lines showing the gap in metres. When the fork leaves the shot (a throw on the
    Moon rises far above the room and lands 14 m away), the camera pulls back over a metre grid to follow it, with the
-   footage framed in the middle and the floor carried on beyond it.
+   footage framed in the middle and the floor carried on beyond it. Any fork can be saved as an MP4 clip (recorded in
+   the browser, labelled, ready to share).
 
 ## Accuracy
 

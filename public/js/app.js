@@ -36,7 +36,7 @@ async function loadClips() {
 }
 
 async function select(c) {
-  state.clip = c; state.run = null; state.fit = null;
+  state.clip = c; state.run = null; state.fit = null; state.fork = null; $('saveClip').hidden = true;
   document.querySelectorAll('.clip').forEach(b => b.classList.toggle('active', b.dataset.id === c.id));
   $('stageEmpty').hidden = true; $('forkbar').hidden = true; $('plotWrap').hidden = true; $('stageBadge').hidden = true;
   $('credit').textContent = c.credit || '';
@@ -160,7 +160,7 @@ function renderForks(rep) {
   const list = [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
   const real = document.createElement('button');
   real.className = 'fork real active'; real.innerHTML = 'Reality<small>as filmed</small>';
-  real.onclick = () => { activate(real); stage.setFork(null); $('forkSummary').textContent = ''; $('stageBadge').hidden = true; plot(stage.frame); };
+  real.onclick = () => { activate(real); stage.setFork(null); state.fork = null; $('saveClip').hidden = true; $('forkSummary').textContent = ''; $('stageBadge').hidden = true; plot(stage.frame); };
   box.append(real);
   for (const f of list.slice(0, 7)) {
     const b = document.createElement('button');
@@ -193,9 +193,42 @@ async function fork(f, button) {
     $('forkSummary').textContent = res.summary || '';
   }
   stage.setAnalysis({world});
-  stage.setFork(res.path, {label: f.label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline, floor: res.floor_px});
+  state.fork = {label: f.label, res};
+  playFork();
+  $('saveClip').hidden = false;
   plot(stage.frame);
 }
+
+const playFork = () => {
+  const {label, res} = state.fork;
+  stage.setFork(res.path, {label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline, floor: res.floor_px});
+};
+
+// Save the fork as a video: record the stage canvas while the fork replays from the start, with the label and the
+// summary burned in. MP4 where the browser can encode it (Chrome, Safari), else WebM. Nothing goes to the server.
+$('saveClip').onclick = async () => {
+  if (!state.fork) return;
+  const btn = $('saveClip'), canvas = $('overlay');
+  const type = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(t => window.MediaRecorder?.isTypeSupported(t));
+  if (!type) return alert('This browser cannot record video.');
+  const rec = new MediaRecorder(canvas.captureStream(Math.round(state.info.fps)), {mimeType: type, videoBitsPerSecond: 8e6});
+  const chunks = [], stopped = new Promise(r => { rec.onstop = r; });
+  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  btn.disabled = true; btn.textContent = 'Recording…';
+  stage.caption = {foot: state.fork.res.summary};
+  playFork();
+  rec.start(250);
+  const limit = Date.now() + 1000 * ((stage.forkEnd - state.fork.res.path[0][0]) / state.info.fps + 6);
+  while (Date.now() < limit && !(stage.frame >= stage.forkEnd && !stage.freeRun)) await new Promise(r => setTimeout(r, 100));
+  await new Promise(r => setTimeout(r, 800));
+  rec.stop(); await stopped;
+  stage.caption = null; stage.redraw();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(chunks, {type}));
+  a.download = `reality-fork-${(state.clip.title || 'clip').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}-${state.fork.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.${type.includes('mp4') ? 'mp4' : 'webm'}`;
+  a.click();
+  btn.disabled = false; btn.textContent = 'Save this fork as a clip';
+};
 
 // ---- transport, upload, voice ----------------------------------------------------------------------------------
 $('play').onclick = () => {

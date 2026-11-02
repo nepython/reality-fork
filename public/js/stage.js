@@ -91,7 +91,28 @@ export class Stage {
       }
       if (this.show.path && d.track) this.dots(d.track.filter(q => q[0] <= frame), COL.measured);
     }
+    if (this.caption) this.drawCaption();
     this.onFrame?.(frame);
+  }
+
+  // Burned into saved clips (the badge and summary are page elements a recording of the canvas would not include).
+  drawCaption() {
+    const ctx = this.ctx, d = this.data, k = d.width / 1280 + 0.4, pad = 14 * k;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.font = `600 ${15 * k}px ui-monospace, monospace`; ctx.textBaseline = 'top';
+    const head = this.badge?.textContent || '', tag = 'REALITY FORK';
+    const w = Math.max(ctx.measureText(head).width, ctx.measureText(tag).width) + 2 * pad;
+    ctx.fillStyle = 'rgba(7, 9, 16, 0.78)'; ctx.fillRect(pad, pad, w, 50 * k);
+    ctx.fillStyle = COL.fork; ctx.fillText(tag, 2 * pad, pad + 8 * k);
+    ctx.fillStyle = '#fff'; ctx.fillText(head, 2 * pad, pad + 28 * k);
+    if (this.caption.foot) {
+      ctx.font = `500 ${13 * k}px system-ui, sans-serif`;
+      const lines = wrap(ctx, this.caption.foot, d.width - 4 * pad);
+      const h = lines.length * 18 * k + 12 * k;
+      ctx.fillStyle = 'rgba(7, 9, 16, 0.78)'; ctx.fillRect(pad, d.height - pad - h, d.width - 2 * pad, h);
+      ctx.fillStyle = '#e8ecf6'; lines.forEach((l, i) => ctx.fillText(l, 2 * pad, d.height - pad - h + 6 * k + i * 18 * k));
+    }
+    ctx.restore();
   }
 
   drawFork(frame) {
@@ -286,4 +307,14 @@ export class Stage {
     for (const p of pts) { ctx.beginPath(); ctx.arc(p[1], p[2], r, 0, 7); ctx.fill(); }
     ctx.restore();
   }
+}
+
+function wrap(ctx, text, width) {
+  const out = []; let line = '';
+  for (const word of text.split(/\s+/)) {
+    const next = line ? line + ' ' + word : word;
+    if (ctx.measureText(next).width > width && line) { out.push(line); line = word; } else line = next;
+  }
+  if (line) out.push(line);
+  return out;
 }

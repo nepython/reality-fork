@@ -71,7 +71,10 @@ h1 { font-size: 24px; margin: 0; letter-spacing: -0.02em; }
 .fork:hover { border-color: var(--fork); }
 .fork.active { border-color: var(--fork); background: rgba(255, 64, 160, .12); }
 .fork.real { border-style: dashed; }
-.restyle { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin-top: 10px; }
+.fork-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.restyle { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.save { background: transparent; color: var(--fork); border: 1px solid var(--fork); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.save:disabled { opacity: 0.6; cursor: progress; }
 .restyle input { accent-color: var(--fork); }
 
 /* plot */
