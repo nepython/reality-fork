@@ -34,7 +34,8 @@ export class Notebook {
 
   event(ev) {
     switch (ev.type) {
-      case 'say': this.card('spark', 'Muse Spark', esc(ev.text)); break;
+      // Runs saved before lib/agent.mjs filtered them can still hold markup or the stray chat-product line.
+      case 'say': if (!/<[a-z]+:function_calls|<invoke name=|feedback on this answer|type it here/i.test(ev.text)) this.card('spark', 'Muse Spark', esc(ev.text)); break;
       case 'call': {
         const [who, text] = (TOOL[ev.name] || (() => ['lab', ev.name]))(ev.args || {});
         this.pending = this.card(who, who === 'sam' ? 'SAM 3.1' : who === 'spark' ? 'Muse Spark' : 'Lab', text, true);
