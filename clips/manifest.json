@@ -1,0 +1,86 @@
+[
+ {
+  "id": "iss_globe_float",
+  "file": "iss_globe_float.mp4",
+  "poster": "iss_globe_float.jpg",
+  "title": "Inflatable globe in microgravity aboard the ISS (STEMonstrations: Momentum and Impulse)",
+  "motion": "float",
+  "source_page": "https://images.nasa.gov/details/jsc2024m000115-STEMonstrations_Momentum_and_Impulse_social",
+  "download_url": "https://images-assets.nasa.gov/video/jsc2024m000115-STEMonstrations_Momentum_and_Impulse_social/jsc2024m000115-STEMonstrations_Momentum_and_Impulse_social~large.mp4",
+  "author": "NASA / ESA astronaut Andreas Mogensen (NASA JSC STEMonstrations)",
+  "licence": "NASA media: generally public domain (NASA Media Usage Guidelines). The NASA image library entry shows no third-party copyright note in its metadata, but I could not render the images.nasa.gov page itself (JavaScript); the astronaut is ESA, so confirm with NASA guidelines before final release.",
+  "licence_url": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+  "attribution": "NASA, STEMonstrations: Momentum and Impulse (Andreas Mogensen, ISS), public domain; trimmed and re-encoded.",
+  "fps": {
+   "rational": "30/1",
+   "number": 30
+  },
+  "duration_s": 8.0,
+  "width": 1280,
+  "height": 720,
+  "trimmed_from": {
+   "start_s": 118.5,
+   "end_s": 126.5,
+   "note": "seconds into the 305 s ~large.mp4 (1920x1080); scaled to 1280x720; audio removed"
+  },
+  "camera_still": true,
+  "real_time": true,
+  "real_time_evidence": "Not documented explicitly; astronaut speech and motion look natural, and this is a normal-speed educational broadcast. Treat as presumed real time.",
+  "duplicate_frames": "mpdecimate kept 238/240 frames, so essentially no duplicates.",
+  "scale_hints": [
+   {
+    "object": "astronaut standing height (~1.8 m in microgravity, approx)",
+    "size_m": 1.8,
+    "source": "estimate only, not documented"
+   }
+  ],
+  "expected": {
+   "constant_velocity_between_pushes": true,
+   "g": 0.0,
+   "source": "free flight in orbit, apparent g ~ 0"
+  },
+  "notes": "Wide static shot of the Columbus module. The globe (~0.3-0.4 m, size undocumented) is pushed and caught by the astronaut, so only the free-flight stretches between contacts (first ~2 s, then around 3-4 s) are constant velocity. Ball is ~40-60 px wide. Wider-than-ideal background clutter.",
+  "question": "Is anything accelerating the globe?"
+ },
+ {
+  "id": "newtons_cradle_2ball",
+  "file": "newtons_cradle_2ball.mp4",
+  "poster": "newtons_cradle_2ball.jpg",
+  "title": "Newton's cradle, two-ball exchange",
+  "motion": "pendulum",
+  "source_page": "https://commons.wikimedia.org/wiki/File:Pendolo_di_Newton_(ogv)_a_2_sferette.ogg",
+  "download_url": "https://upload.wikimedia.org/wikipedia/commons/0/02/Pendolo_di_Newton_%28ogv%29_a_2_sferette.ogg",
+  "author": "Riccardo Ottanta (own work, 2023)",
+  "licence": "CC0 1.0",
+  "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "attribution": "Riccardo Ottanta, Newton's cradle (2 balls), CC0, trimmed and re-encoded.",
+  "fps": {
+   "rational": "30/1",
+   "number": 30
+  },
+  "duration_s": 8.0,
+  "width": 1280,
+  "height": 960,
+  "trimmed_from": {
+   "start_s": 0.5,
+   "end_s": 8.5,
+   "note": "seconds into the 158 s source (1400x1050, 30 fps Theora); audio removed"
+  },
+  "camera_still": true,
+  "real_time": "unknown",
+  "real_time_evidence": "The page does not say. The title of the sibling files says 'rallentato' (slowed) for the 3- and 5-ball versions but not for this one. Ball swing period looks ~0.8 s with motion blur, consistent with real time, unverified.",
+  "duplicate_frames": "mpdecimate kept 240/240 frames.",
+  "scale_hints": [
+   {
+    "object": "ball diameter",
+    "size_m": null,
+    "source": "not documented"
+   }
+  ],
+  "expected": {
+   "note": "pendulum period T=2*pi*sqrt(L/g) once L known; L is not documented"
+  },
+  "notes": "MARGINAL. Impact-dominated, balls move fast with heavy motion blur and exit towards the frame edges; only the pendulum arc between impacts is useful. Cleaner than nothing but not a clean sinusoidal swing.",
+  "question": "What does the swing tell us about the strings and gravity?"
+ }
+]

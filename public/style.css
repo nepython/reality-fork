@@ -7,6 +7,7 @@
   --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); }
 body { min-height: 100vh; display: flex; flex-direction: column; }
 .mono { font-family: var(--mono); }
@@ -111,6 +112,13 @@ figcaption { font-size: 12px; color: var(--muted); display: flex; gap: 14px; fle
 .step img { width: 100%; border-radius: 8px; margin-top: 6px; display: block; }
 .step code { font: 12px var(--mono); color: var(--measured); }
 
+.intro { margin: 4px 0 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.5; color: #c6ccda; }
+.intro li::marker { color: var(--muted); font: 12px var(--mono); }
+.intro .chip { font-size: 10px; padding: 3px 7px; margin-right: 4px; vertical-align: 1px; }
+.steps:not(:empty) + .intro { display: none; }
+.steps:empty { display: none; }
+.stage .empty b { color: var(--text); font-weight: 600; }
+.stage .empty span { font-size: 13px; display: inline-block; margin-top: 6px; max-width: 420px; }
 .report { margin-top: 12px; background: linear-gradient(160deg, #10202a, #161226); border: 1px solid #2b3550; border-radius: 14px; padding: 14px 16px; animation: rise .35s ease-out; }
 .report h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: -.01em; }
 .report p { margin: 6px 0 10px; font-size: 14px; line-height: 1.5; color: #cfd5e3; }

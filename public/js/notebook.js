@@ -65,8 +65,10 @@ export class Notebook {
     } else if (name === 'fit_motion') {
       const rows = r.ranked.map((m, i) => {
         const main = m.derived.find(d => d.name === 'g') || m.derived[0];
-        const dbic = m.bic - r.ranked[0].bic;
-        return `<tr class="${i ? '' : 'best'}"><td>${esc(MODEL_NAME[m.model] || m.model)}</td><td>${i ? '+' + num(dbic) : 'best'}</td><td>${m.rms_px != null ? num(m.rms_px) + ' px' : ''}</td><td>${main ? esc(main.name) + ' ' + num(main.value, main.sigma) + (main.sigma ? '±' + num(main.sigma, main.sigma) : '') + ' ' + esc(unit(main.unit)) : ''}</td></tr>`;
+        // A parameter the data cannot pin down (sigma far above its value) is shown as such, not as a number.
+        const loose = main && (!isFinite(main.sigma) || Math.abs(main.sigma) > 3 * Math.abs(main.value));
+        const val = !main ? '' : loose ? `${esc(main.name)} unconstrained` : `${esc(main.name)} ${num(main.value, main.sigma)}${main.sigma ? '±' + num(main.sigma, main.sigma) : ''} ${esc(unit(main.unit))}`;
+        return `<tr class="${i ? '' : 'best'}"><td>${esc(MODEL_NAME[m.model] || m.model)}</td><td>${i ? '+' + num(m.dBIC) : 'best'}</td><td>${m.rms_px != null ? num(m.rms_px) + ' px' : ''}</td><td>${val}</td></tr>`;
       }).join('');
       body.insertAdjacentHTML('beforeend', `<table><tr><th>law</th><th>ΔBIC</th><th>rms</th><th>key value</th></tr>${rows}</table>`);
     } else if (name === 'check_overlay') {

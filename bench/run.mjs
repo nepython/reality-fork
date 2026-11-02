@@ -12,11 +12,17 @@ const args = process.argv.slice(2);
 const fresh = args.includes('--fresh');
 const only = args.find(a => a.startsWith('--only'))?.split('=')[1]?.split(',') || (args.includes('--only') ? args[args.indexOf('--only') + 1].split(',') : null);
 
-// What we can score per clip: {name: true value}. Synthetic scenes carry exact truth; real clips their documented value.
+// What we can score per clip, as {derived quantity name: true value}. Synthetic scenes carry exact truth; real clips
+// carry their documented value (e.g. lunar g for Apollo footage).
 function truthOf(c) {
-  const t = c.truth?.params || c.truth?.truth || c.truth || c.expected || {};
+  const t = c.truth?.params || c.expected || {};
   const out = {};
-  for (const k of ['g', 'e', 'L', 'b', 'alpha_deg', 'vx', 'vy']) if (typeof t[k] === 'number') out[k] = t[k];
+  if (typeof t.g === 'number' && t.g > 0 && !('alpha_deg' in t)) out.g = t.g;
+  if (typeof t.e === 'number') out.e = t.e;
+  if (typeof t.L === 'number') out.L = t.L;
+  if (typeof t.drag_b === 'number') out.b = t.drag_b;
+  if (typeof t.a_along_slope === 'number') out.a = t.a_along_slope;
+  if (t.g === 0 && typeof t.vx === 'number') out.speed = Math.hypot(t.vx, t.vy || 0); // floating: nothing to measure but speed
   return out;
 }
 
@@ -40,7 +46,7 @@ for (const c of clips) {
   const derived = Object.fromEntries((run.report.fit?.derived || []).map(d => [d.name, d]));
   const truth = truthOf(c), scores = {};
   for (const [k, v] of Object.entries(truth)) {
-    const d = derived[k];
+    const d = derived[k] || (k === 'b' ? derived.drag_b : null);
     if (!d) { scores[k] = {truth: v, measured: null}; continue; }
     const sigma = d.sigma_total ?? d.sigma;
     scores[k] = {truth: v, measured: d.value, sigma, error_pct: 100 * (d.value - v) / v, within_2sigma: sigma ? Math.abs(d.value - v) <= 2 * sigma : null};
