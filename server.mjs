@@ -51,7 +51,7 @@ function send(res, code, body, type = 'application/json') {
   res.end(data);
 }
 
-function readBody(req, limit = 80 << 20) {
+function readBody(req, limit = 150 << 20) {
   return new Promise((resolve, reject) => {
     const chunks = []; let n = 0;
     req.on('data', c => { n += c.length; if (n > limit) { reject(Object.assign(new Error('too large'), {status: 413})); req.destroy(); } else chunks.push(c); });
