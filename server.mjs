@@ -66,7 +66,7 @@ async function plateFor(clip) {
   // With an analysed run, the object's own SAM masks (grown by a margin for blur and shadow) keep it out of the plate.
   const run = latestRun(clip.id), obj = run?.report?.object, prompt = run?.prompts?.[obj];
   const file = path.join(ASSETS, hashOf(clip.file, 'plate', prompt || '', obj || '') + '.jpg');
-  if (!fs.existsSync(file)) {
+  if (!fs.existsSync(file) || !fs.existsSync(file.replace(/\.jpg$/, '.json'))) {
     const masks = prompt ? await masksFor(clip, run, obj) : null;
     const pad = 8;
     const exclude = masks && (frame => {
@@ -75,7 +75,10 @@ async function plateFor(clip) {
       return (x, y) => x >= m.left - pad && x < m.right + pad && y >= m.top - pad && y < m.bottom + pad &&
         near(m, x - m.left, y - m.top, pad);
     });
-    fs.writeFileSync(file, encodeImage(medianPlate(clip.file, {exclude}), 'jpeg', {quality: 2}));
+    const plate = medianPlate(clip.file, {exclude});
+    fs.writeFileSync(file, encodeImage(plate, 'jpeg', {quality: 2}));
+    // Measured: test scenes < 1, the ISS (an astronaut moving behind the globe) 5.6, the Artemis launch 48.
+    fs.writeFileSync(file.replace(/\.jpg$/, '.json'), JSON.stringify({change: +plate.change.toFixed(2), steady: plate.change < 15}));
   }
   return file;
 }
@@ -187,7 +190,11 @@ async function api(req, res, url) {
     return;
   }
 
-  if (url.pathname === '/api/plate') return sendFile(req, res, await plateFor(clip));
+  if (url.pathname === '/api/plate') {
+    const file = await plateFor(clip), meta = file.replace(/\.jpg$/, '.json');
+    if (q.meta) return send(res, 200, fs.existsSync(meta) ? JSON.parse(fs.readFileSync(meta, 'utf8')) : {steady: true});
+    return sendFile(req, res, file);
+  }
 
   if (url.pathname === '/api/sprite') {
     const run = latestRun(clip.id);
@@ -211,7 +218,8 @@ async function api(req, res, url) {
     const body = JSON.parse((await readBody(req, 1 << 16)).toString() || '{}');
     const run = latestRun(clip.id);
     if (!run) return send(res, 404, {error: 'analyse first'});
-    return send(res, 200, forkPixels(run, body.overrides || {}, {fps: clipInfo(clip).fps, frames: clipInfo(clip).frames}));
+    const sprite = await spriteFor(clip, run, run.report.object).catch(() => null);
+    return send(res, 200, forkPixels(run, body.overrides || {}, {fps: clipInfo(clip).fps, frames: clipInfo(clip).frames, sprite: sprite?.meta}));
   }
 
   if (url.pathname === '/api/restyle' && req.method === 'POST') {

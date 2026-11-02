@@ -37,8 +37,9 @@ export class Stage {
   redraw() { this.draw(this.frame); }
 
   // ---- fork playback -------------------------------------------------------------------------------------------
-  setFork(path, {label, start, end} = {}) {
+  setFork(path, {label, start, end, baseline} = {}) {
     this.data.forkPath = path;
+    this.data.basePath = baseline || null;
     this.forking = !!path;
     this.forkLabel = label;
     this.forkEnd = end ?? (path ? path.at(-1)[0] : 0);
@@ -100,17 +101,23 @@ export class Stage {
       this.last.getContext('2d').drawImage(this.video, 0, 0, d.width, d.height);
     } else ctx.drawImage(this.last, 0, 0);
     const start = d.forkPath[0][0];
-    // Before the fork begins (the object is still held), the footage plays untouched.
-    if (frame >= start && !d.world) this.eraseObject(Math.min(frame, d.frames - 1));
+    // Before the fork begins (the object is still held), the footage plays untouched. On a scene that changes behind
+    // the object (a launch: plume and lighting), the plate is no true background, so the real object stays, veiled.
+    if (frame >= start && !d.world) {
+      if (d.plateSteady === false) this.drawMask(Math.min(frame, d.frames - 1), 'rgba(8, 10, 20, 0.5)', 3);
+      else this.eraseObject(Math.min(frame, d.frames - 1));
+    }
     if (this.show.path && d.fitPath) this.curve(d.fitPath, 'rgba(255,214,10,0.55)', 1.5, [4, 5]);
     this.curve(d.forkPath.filter(q => q[0] <= frame), COL.fork, 2.5);
     const p = d.forkPath.find(q => q[0] === frame) || (frame > this.forkEnd ? d.forkPath.at(-1) : null);
     if (p && frame >= start) this.sprite(p[1], p[2]);
+    this.gapText = '';
+    if (p && frame >= start && d.plateSteady === false) this.gapLines(frame, p);
     else if (d.world && frame < start) { const q = d.track?.find(r => r[0] === frame); if (q) this.sprite(q[1], q[2]); }
     if (this.badge) {
       this.badge.hidden = false;
       const t = Math.max(0, (frame - start) / d.fps);
-      this.badge.innerHTML = `<span class="k">${this.forkLabel || 'fork'}</span> · t = ${t.toFixed(2)} s`;
+      this.badge.innerHTML = `<span class="k">${this.forkLabel || 'fork'}</span> · t = ${t.toFixed(2)} s${this.gapText ? ' · ' + this.gapText + ' than reality' : ''}`;
     }
   }
 
@@ -130,10 +137,10 @@ export class Stage {
 
   // A frame's mask as an alpha canvas, dilated so the motion-blur halo is covered too; cached per frame.
   maskCanvas(frame, pad = 6) {
-    const d = this.data, cache = this.maskCache ||= new Map();
-    if (cache.has(frame)) return cache.get(frame);
+    const d = this.data, cache = this.maskCache ||= new Map(), key = frame + ':' + pad;
+    if (cache.has(key)) return cache.get(key);
     const m = d.masks?.get(frame);
-    if (!m) { cache.set(frame, null); return null; }
+    if (!m) { cache.set(key, null); return null; }
     const w = m.right - m.left + 2 * pad, h = m.bottom - m.top + 2 * pad;
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const g = c.getContext('2d'), img = g.createImageData(w, h);
@@ -150,12 +157,12 @@ export class Stage {
     }
     g.putImageData(img, 0, 0);
     const out = {canvas: c, x: m.left - pad, y: m.top - pad};
-    cache.set(frame, out);
+    cache.set(key, out);
     return out;
   }
 
-  drawMask(frame, color) {
-    const m = this.maskCanvas(frame, 0);
+  drawMask(frame, color, pad = 0) {
+    const m = this.maskCanvas(frame, pad);
     if (!m) return;
     const tmp = this.tmp2 ||= document.createElement('canvas');
     tmp.width = m.canvas.width; tmp.height = m.canvas.height;
@@ -171,8 +178,33 @@ export class Stage {
     const s = this.data.sprite, m = this.data.spriteMeta;
     // The fit may follow the object's top or bottom edge (see fit.point); anchor the cut-out at the same point.
     const point = this.data.point, ax = point === 'top' ? m?.tx : point === 'bottom' ? m?.bx : m?.cx, ay = point === 'top' ? m?.ty : point === 'bottom' ? m?.by : m?.cy;
-    if (s && m) this.ctx.drawImage(s, x - (ax - m.left), y - (ay - m.top));
+    if (s && m) {
+      // Beside a veiled real object the forked one needs to stand apart: a fork-coloured glow.
+      const ctx = this.ctx; ctx.save();
+      if (this.data.plateSteady === false && this.forking) { ctx.shadowColor = COL.fork; ctx.shadowBlur = 16 * this.scale(); }
+      ctx.drawImage(s, x - (ax - m.left), y - (ay - m.top)); ctx.restore();
+    }
     else { this.ctx.fillStyle = COL.fork; this.ctx.beginPath(); this.ctx.arc(x, y, this.radius(), 0, 7); this.ctx.fill(); }
+  }
+
+  // A real object that cannot be erased overlaps its fork (a 600 px rocket ahead by 100 px), so mark both tracked
+  // points with lines across the object, as a swimming broadcast marks the record pace, and print the gap.
+  gapLines(frame, p) {
+    const d = this.data, q = d.basePath?.find(r => r[0] === frame) || d.track?.find(r => r[0] === frame);
+    if (!q) return;
+    const ctx = this.ctx, k = this.scale(), half = Math.max(40, (d.spriteMeta?.width || 40) * 0.9);
+    const tick = (x, y, color, text, right) => {
+      ctx.strokeStyle = color; ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.moveTo(x - half, y); ctx.lineTo(x + half, y); ctx.stroke();
+      ctx.fillStyle = color; ctx.textAlign = right ? 'left' : 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(text, right ? x + half + 8 * k : x - half - 8 * k, y);
+    };
+    ctx.save(); ctx.font = `600 ${13 * k}px ui-monospace, monospace`;
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
+    tick(q[1], q[2], COL.measured, 'reality', false);
+    const gap = d.ppm ? Math.hypot(p[1] - q[1], p[2] - q[2]) / d.ppm : null;
+    this.gapText = gap != null && gap >= 0.5 ? `${gap.toFixed(gap < 10 ? 1 : 0)} m ${p[2] < q[2] ? 'higher' : 'lower'}` : '';
+    tick(p[1], p[2], COL.fork, (this.forkLabel || 'fork') + (this.gapText ? '  ' + this.gapText : ''), true);
+    ctx.restore();
   }
 
   radius() { const t = this.data.track; return t?.length ? Math.max(4, (t[Math.floor(t.length / 2)][3] || 16) / 2) : 10; }

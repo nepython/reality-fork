@@ -101,7 +101,7 @@ async function loadAnalysis() {
   state.fit = {track: measured, fitPath: fit.real, ppm: rep.fit?.ppm, origin: rep.fit?.origin_px, start: rep.fit?.frames?.[0] || 0};
   state.axis = rep.fit?.model === 'pendulum' || rep.fit?.model === 'oscillator' && spread(state.fit.track, 1) > spread(state.fit.track, 2) ? 'x' : 'y';
   if (rep.fit?.model === 'pendulum') state.axis = 'x';
-  stage.setAnalysis({track: state.fit.track, fitPath: fit.real, fps: state.info.fps, frames: state.info.frames, point: rep.fit?.point || 'centroid'});
+  stage.setAnalysis({track: state.fit.track, fitPath: fit.real, fps: state.info.fps, frames: state.info.frames, point: rep.fit?.point || 'centroid', ppm: rep.fit?.ppm});
   $('plotWrap').hidden = false; plot(stage.frame);
   // Compositing assets, fetched in the background: masks, the clean plate, the object's cut-out.
   const [masks, plate, sprite, spriteMeta] = await Promise.all([
@@ -109,7 +109,9 @@ async function loadAnalysis() {
     image(`/api/plate?clip=${id}`), image(`/api/sprite?clip=${id}&object=${encodeURIComponent(obj)}`).catch(() => null),
     fetch(`/api/sprite?clip=${id}&object=${encodeURIComponent(obj)}&meta=1`).then(r => r.ok ? r.json() : null),
   ]);
-  stage.setAnalysis({masks, plate, sprite, spriteMeta});
+  // The plate is built by the request above, so its steadiness score exists now.
+  const plateMeta = await fetch(`/api/plate?clip=${id}&meta=1`).then(r => r.ok ? r.json() : {steady: true}).catch(() => ({steady: true}));
+  stage.setAnalysis({masks, plate, sprite, spriteMeta, plateSteady: plateMeta.steady !== false});
   renderForks(rep);
 }
 
@@ -189,7 +191,7 @@ async function fork(f, button) {
     $('forkSummary').textContent = res.summary || '';
   }
   stage.setAnalysis({world});
-  stage.setFork(res.path, {label: f.label, start: res.path[0][0], end: res.end_frame});
+  stage.setFork(res.path, {label: f.label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline});
   plot(stage.frame);
 }
 
