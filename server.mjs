@@ -231,10 +231,11 @@ async function api(req, res, url) {
       jupiter: 'Repaint this exact scene as if it were on a floating platform in Jupiter\'s upper clouds: swirling cream and orange cloud bands, a heavy hazy sky. Keep the camera angle, the layout and every object\'s position exactly the same.',
     };
     if (!worlds[body.world]) return send(res, 400, {error: 'unknown world'});
-    if (!allowLive(req)) return send(res, 429, {error: 'limit reached'});
     const plate = fs.readFileSync(await plateFor(clip)), info = clipInfo(clip);
     const out = path.join(ASSETS, hashOf(clip.file, body.world, 'restyle') + '.jpg');
     if (!fs.existsSync(out)) {
+      // Only a new picture is paid for, so only that counts against the hourly limit.
+      if (!allowLive(req)) return send(res, 429, {error: 'limit reached'});
       const img = await editImage({imageDataUrl: dataUrl(plate), prompt: worlds[body.world], size: `${info.width}x${info.height}`});
       fs.writeFileSync(out, encodeImage(decodeImage(Buffer.from(img.b64, 'base64'), info.width, info.height), 'jpeg', {quality: 2}));
     }

@@ -183,8 +183,10 @@ async function fork(f, button) {
   if (res.error) { $('forkSummary').textContent = res.error; return; }
   $('forkSummary').textContent = res.summary || '';
   let world = null;
-  const name = f.label.toLowerCase();
-  if ($('restyle').checked && ['moon', 'mars', 'jupiter'].includes(name)) {
+  // Picked by gravity, so the agent's own forks ("same throw on the Moon") get the world too. Only over a steady plate:
+  // the repaint replaces the footage, which for a launch would take the plume away with it.
+  const name = [['moon', 1.62], ['mars', 3.71], ['jupiter', 24.79]].find(([, g]) => Math.abs((f.g || 0) - g) < 0.01)?.[0];
+  if ($('restyle').checked && name && stage.data.plateSteady !== false) {
     $('forkSummary').textContent = 'Muse Image is repainting the scene…';
     const r = await post(`/api/restyle?clip=${id}`, {world: name});
     if (r.url) world = await image(r.url);
