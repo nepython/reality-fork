@@ -96,10 +96,12 @@ async function loadAnalysis() {
   const rep = runData.report;
   const obj = rep.object in (rep.tracks || {}) ? rep.object : Object.keys(rep.tracks || {})[0];
   const fit = await post(`/api/fork?clip=${id}`, {overrides: {}});
-  state.fit = {track: rep.tracks[obj], fitPath: fit.real, ppm: rep.fit?.ppm, origin: rep.fit?.origin_px, start: rep.fit?.frames?.[0] || 0};
+  // The dots are the points the fit actually followed (centroid, or an edge for a partly hidden object).
+  const measured = rep.fit?.measured || rep.tracks[obj];
+  state.fit = {track: measured, fitPath: fit.real, ppm: rep.fit?.ppm, origin: rep.fit?.origin_px, start: rep.fit?.frames?.[0] || 0};
   state.axis = rep.fit?.model === 'pendulum' || rep.fit?.model === 'oscillator' && spread(state.fit.track, 1) > spread(state.fit.track, 2) ? 'x' : 'y';
   if (rep.fit?.model === 'pendulum') state.axis = 'x';
-  stage.setAnalysis({track: state.fit.track, fitPath: fit.real, fps: state.info.fps, frames: state.info.frames});
+  stage.setAnalysis({track: state.fit.track, fitPath: fit.real, fps: state.info.fps, frames: state.info.frames, point: rep.fit?.point || 'centroid'});
   $('plotWrap').hidden = false; plot(stage.frame);
   // Compositing assets, fetched in the background: masks, the clean plate, the object's cut-out.
   const [masks, plate, sprite, spriteMeta] = await Promise.all([

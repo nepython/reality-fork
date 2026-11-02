@@ -62,10 +62,31 @@ function readBody(req, limit = 80 << 20) {
 const safeJoin = (base, rel) => { const p = path.resolve(base, '.' + path.posix.normalize('/' + rel)); return p.startsWith(base) ? p : null; };
 
 // ---- assets for compositing: clean plate, the object's cut-out, its masks -----------------------------------
-function plateFor(clip) {
-  const file = path.join(ASSETS, hashOf(clip.file, 'plate') + '.jpg');
-  if (!fs.existsSync(file)) fs.writeFileSync(file, encodeImage(medianPlate(clip.file), 'jpeg', {quality: 2}));
+async function plateFor(clip) {
+  // With an analysed run, the object's own SAM masks (grown by a margin for blur and shadow) keep it out of the plate.
+  const run = latestRun(clip.id), obj = run?.report?.object, prompt = run?.prompts?.[obj];
+  const file = path.join(ASSETS, hashOf(clip.file, 'plate', prompt || '', obj || '') + '.jpg');
+  if (!fs.existsSync(file)) {
+    const masks = prompt ? await masksFor(clip, run, obj) : null;
+    const pad = 8;
+    const exclude = masks && (frame => {
+      const m = masks.get(frame);
+      if (!m) return null;
+      return (x, y) => x >= m.left - pad && x < m.right + pad && y >= m.top - pad && y < m.bottom + pad &&
+        near(m, x - m.left, y - m.top, pad);
+    });
+    fs.writeFileSync(file, encodeImage(medianPlate(clip.file, {exclude}), 'jpeg', {quality: 2}));
+  }
   return file;
+}
+
+// Is (x, y) (relative to the mask's box) within `pad` pixels of a mask pixel? Sampled on a coarse ring for speed.
+function near(m, x, y, pad) {
+  for (const [dx, dy] of [[0, 0], [pad, 0], [-pad, 0], [0, pad], [0, -pad], [pad * .7, pad * .7], [-pad * .7, pad * .7], [pad * .7, -pad * .7], [-pad * .7, -pad * .7]]) {
+    const u = Math.round(x + dx), v = Math.round(y + dy);
+    if (u >= 0 && v >= 0 && u < m.right - m.left && v < m.bottom - m.top && m.at(u, v)) return true;
+  }
+  return false;
 }
 
 // The object's sprite: cut from the frame where it moves least (sharpest), using SAM's mask, as an RGBA PNG.
@@ -90,7 +111,14 @@ async function spriteFor(clip, run, objectKey) {
     rgba[o + 3] = m.at(x, y) ? 255 : 0;
   }
   fs.writeFileSync(file, encodeRGBA({width: w, height: h, data: rgba}));
-  const info = {frame, left: m.left, top: m.top, width: w, height: h, cx: pts[best][1], cy: pts[best][2]};
+  // Anchor points matching the ones the fit can follow: centroid, top edge, bottom edge (row-profile, as in lib/sam.mjs).
+  const rows = Array.from({length: h}, (_, y) => { let n = 0, sx = 0; for (let x = 0; x < w; x++) if (m.at(x, y)) { n++; sx += x; } return [n, sx]; });
+  const need = 0.15 * Math.max(...rows.map(r => r[0]));
+  let r0 = 0, r1 = h - 1;
+  while (r0 < h - 1 && rows[r0][0] < need) r0++;
+  while (r1 > 0 && rows[r1][0] < need) r1--;
+  const info = {frame, left: m.left, top: m.top, width: w, height: h, cx: pts[best][1], cy: pts[best][2],
+    tx: m.left + rows[r0][1] / Math.max(1, rows[r0][0]) + 0.5, ty: m.top + r0, bx: m.left + rows[r1][1] / Math.max(1, rows[r1][0]) + 0.5, by: m.top + r1 + 1};
   fs.writeFileSync(meta, JSON.stringify(info));
   return {file, meta: info};
 }
@@ -159,7 +187,7 @@ async function api(req, res, url) {
     return;
   }
 
-  if (url.pathname === '/api/plate') return sendFile(req, res, plateFor(clip));
+  if (url.pathname === '/api/plate') return sendFile(req, res, await plateFor(clip));
 
   if (url.pathname === '/api/sprite') {
     const run = latestRun(clip.id);
@@ -196,7 +224,7 @@ async function api(req, res, url) {
     };
     if (!worlds[body.world]) return send(res, 400, {error: 'unknown world'});
     if (!allowLive(req)) return send(res, 429, {error: 'limit reached'});
-    const plate = fs.readFileSync(plateFor(clip)), info = clipInfo(clip);
+    const plate = fs.readFileSync(await plateFor(clip)), info = clipInfo(clip);
     const out = path.join(ASSETS, hashOf(clip.file, body.world, 'restyle') + '.jpg');
     if (!fs.existsSync(out)) {
       const img = await editImage({imageDataUrl: dataUrl(plate), prompt: worlds[body.world], size: `${info.width}x${info.height}`});

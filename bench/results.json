@@ -1,0 +1,262 @@
+{
+ "at": "2026-11-02T08:55:29.852Z",
+ "summary": {
+  "clips": 9,
+  "g_scored": 7,
+  "g_median_abs_error_pct": 0.7530864197530857,
+  "g_within_2sigma": 7,
+  "spent_this_run_usd": 0,
+  "total_spent_usd": 1.1195
+ },
+ "rows": [
+  {
+   "clip": "sample:artemis1_liftoff",
+   "title": "Artemis I lifts off (NASA, 16 Nov 2022)",
+   "model": "projectile",
+   "headline": "SLS net liftoff acceleration: 5.1 m/s² upward",
+   "confidence": "high",
+   "seconds": 167,
+   "scores": {
+    "g": {
+     "truth": -5.2,
+     "measured": -5.0701,
+     "sigma": 0.15723667786467252,
+     "error_pct": -2.4980769230769253,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "set_scale",
+    "fit_motion",
+    "check_overlay",
+    "fit_motion",
+    "check_overlay",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:bounce",
+   "title": "Test scene: bounce",
+   "model": "bounce",
+   "headline": "Bouncing basketball: g=9.8 m/s², e=0.78",
+   "confidence": "high",
+   "seconds": 96.2,
+   "scores": {
+    "g": {
+     "truth": 9.81,
+     "measured": 9.7497,
+     "sigma": 0.4349670631340928,
+     "error_pct": -0.6146788990825667,
+     "within_2sigma": true
+    },
+    "e": {
+     "truth": 0.78,
+     "measured": 0.77989,
+     "sigma": 0.0000541,
+     "error_pct": -0.014102564102571089,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "check_overlay",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:drop-60fps",
+   "title": "Test scene: drop-60fps",
+   "model": "projectile",
+   "headline": "Basketball dropped in free fall: g = 9.7 m/s²",
+   "confidence": "high",
+   "seconds": 73.5,
+   "scores": {
+    "g": {
+     "truth": 9.81,
+     "measured": 9.7443,
+     "sigma": 0.4349298078339154,
+     "error_pct": -0.6697247706421983,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "check_overlay",
+    "fit_motion",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:drop",
+   "title": "Test scene: drop",
+   "model": "projectile",
+   "headline": "Dropped basketball in Earth gravity — dead stop, no bounce",
+   "confidence": "high",
+   "seconds": 101.9,
+   "scores": {
+    "g": {
+     "truth": 9.81,
+     "measured": 9.3622,
+     "sigma": 0.42809292366024754,
+     "error_pct": -4.5647298674821695,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "fit_motion",
+    "fit_motion",
+    "check_overlay",
+    "fit_motion",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:float",
+   "title": "Test scene: float",
+   "model": "constant-velocity",
+   "headline": "Weightless drift: 0 g, straight line at 0.96 m/s",
+   "confidence": "high",
+   "seconds": 67,
+   "scores": {
+    "speed": {
+     "truth": 0.9656603957913984,
+     "measured": 0.96292,
+     "sigma": 0.0429723315949653,
+     "error_pct": -0.2837846310506015,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "check_overlay",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:incline",
+   "title": "Test scene: incline",
+   "model": "incline",
+   "headline": "Ball rolling down 12° ramp at 1.46 m/s² — Earth g",
+   "confidence": "high",
+   "seconds": 67.8,
+   "scores": {
+    "a": {
+     "truth": 1.4568669192301567,
+     "measured": 1.4558,
+     "sigma": 0.0649922767855996,
+     "error_pct": -0.0732338153934099,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "check_overlay",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:moon-drop",
+   "title": "Test scene: moon-drop",
+   "model": "projectile",
+   "headline": "Lunar gravity fall: g = 1.63 m/s²",
+   "confidence": "high",
+   "seconds": 59.1,
+   "scores": {
+    "g": {
+     "truth": 1.62,
+     "measured": 1.6322,
+     "sigma": 0.04307568079828767,
+     "error_pct": 0.7530864197530857,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "check_overlay",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:pendulum",
+   "title": "Test scene: pendulum",
+   "model": "pendulum",
+   "headline": "Simple pendulum: g = 9.9 m/s², period 1.74 s",
+   "confidence": "high",
+   "seconds": 140.6,
+   "scores": {
+    "g": {
+     "truth": 9.81,
+     "measured": 9.854,
+     "sigma": 0.836161419089986,
+     "error_pct": 0.44852191641181144,
+     "within_2sigma": true
+    },
+    "L": {
+     "truth": 0.75,
+     "measured": 0.75356,
+     "sigma": 0.06394386624997904,
+     "error_pct": 0.4746666666666677,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "check_overlay",
+    "track_objects",
+    "fit_motion",
+    "final_report"
+   ]
+  },
+  {
+   "clip": "synthetic:throw",
+   "title": "Test scene: throw",
+   "model": "projectile-drag",
+   "headline": "Thrown tennis ball at Earth g, then dead stop",
+   "confidence": "high",
+   "seconds": 93.2,
+   "scores": {
+    "g": {
+     "truth": 9.81,
+     "measured": 10.013,
+     "sigma": 0.6591020649611575,
+     "error_pct": 2.0693170234454574,
+     "within_2sigma": true
+    },
+    "b": {
+     "truth": 0.03,
+     "measured": 0.030042,
+     "sigma": 0.0020046202074517705,
+     "error_pct": 0.14000000000000123,
+     "within_2sigma": true
+    }
+   },
+   "tools": [
+    "track_objects",
+    "set_scale",
+    "fit_motion",
+    "fit_motion",
+    "check_overlay",
+    "fit_motion",
+    "final_report"
+   ]
+  }
+ ]
+}

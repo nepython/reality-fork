@@ -11,7 +11,7 @@ const TOOL = {
   track_objects: a => ['sam', `SAM 3.1 · tracking <code>${esc(a.prompt)}</code> in every frame`],
   set_scale: a => ['lab', `Setting the scale from ${esc(a.object || a.prompt)}: ${esc(a.real_size_m)} m ${esc(a.dimension)} (±${esc(a.size_uncertainty_m)} m)`],
   fit_motion: a => ['lab', `Fitting laws of motion to <code>${esc(a.object)}</code>${a.models?.length ? ' (' + a.models.map(esc).join(', ') + ')' : ''}${Object.keys(a.fixed || {}).length ? ' with ' + esc(JSON.stringify(a.fixed)) + ' fixed' : ''}`],
-  check_overlay: a => ['lab', `Checking ${esc(a.model)} against the footage`],
+  check_overlay: a => ['lab', `Checking fit ${esc(a.fit_id)} against the footage`],
   final_report: () => ['spark', 'Writing the report'],
 };
 const MODEL_NAME = {'constant-velocity': 'constant velocity', projectile: 'free flight', 'projectile-drag': 'flight with air drag',

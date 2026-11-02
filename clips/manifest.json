@@ -1,5 +1,50 @@
 [
  {
+  "id": "artemis1_liftoff",
+  "file": "artemis1_liftoff.mp4",
+  "poster": "artemis1_liftoff.jpg",
+  "title": "Artemis I lifts off (NASA, 16 Nov 2022)",
+  "motion": "launch",
+  "source_page": "https://images.nasa.gov/details/KSC-20221116-MH-AJN01-0001-Artemis_I_Isolated_Launch_Views-3314595",
+  "download_url": "https://images-assets.nasa.gov/video/KSC-20221116-MH-AJN01-0001-Artemis_I_Isolated_Launch_Views-3314595/KSC-20221116-MH-AJN01-0001-Artemis_I_Isolated_Launch_Views-3314595~medium.mp4",
+  "author": "NASA / Kennedy Space Center",
+  "licence": "Public domain (NASA media; no endorsement implied)",
+  "licence_url": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+  "attribution": "Artemis I Isolated Launch Views, camera 907. NASA/KSC, public domain; trimmed and re-encoded.",
+  "fps": {
+   "rational": "30/1",
+   "number": 30
+  },
+  "duration_s": 9.0,
+  "width": 1280,
+  "height": 720,
+  "trimmed_from": {
+   "start_s": 1090.0,
+   "end_s": 1099.0
+  },
+  "camera_still": true,
+  "real_time": true,
+  "scale_hints": [
+   {
+    "object": "SLS Block 1 with Orion, full height",
+    "size_m": 98.3,
+    "source": "NASA SLS reference guide: 322 ft"
+   },
+   {
+    "object": "SLS core stage diameter",
+    "size_m": 8.4,
+    "source": "NASA SLS reference guide: 27.6 ft"
+   }
+  ],
+  "expected": {
+   "g": -5.2,
+   "meaning": "net upward acceleration at liftoff (fitted g is negative: the rocket accelerates up)",
+   "source": "NASA: 8.8 Mlbf (39.1 MN) liftoff thrust, 5.75 Mlb (2.61 Mkg) liftoff mass; thrust/weight 1.53, so a = 0.53 g = 5.2 m/s\u00b2"
+  },
+  "question": "How hard does the rocket accelerate off the pad?",
+  "notes": "Fixed pad camera at night. The base is below the frame and the lower rocket vanishes into exhaust glare, so the nose (top edge) is the clean point to track. Expected values are approximate: thrust ramps at ignition."
+ },
+ {
   "id": "iss_globe_float",
   "file": "iss_globe_float.mp4",
   "poster": "iss_globe_float.jpg",
@@ -41,46 +86,5 @@
   },
   "notes": "Wide static shot of the Columbus module. The globe (~0.3-0.4 m, size undocumented) is pushed and caught by the astronaut, so only the free-flight stretches between contacts (first ~2 s, then around 3-4 s) are constant velocity. Ball is ~40-60 px wide. Wider-than-ideal background clutter.",
   "question": "Is anything accelerating the globe?"
- },
- {
-  "id": "newtons_cradle_2ball",
-  "file": "newtons_cradle_2ball.mp4",
-  "poster": "newtons_cradle_2ball.jpg",
-  "title": "Newton's cradle, two-ball exchange",
-  "motion": "pendulum",
-  "source_page": "https://commons.wikimedia.org/wiki/File:Pendolo_di_Newton_(ogv)_a_2_sferette.ogg",
-  "download_url": "https://upload.wikimedia.org/wikipedia/commons/0/02/Pendolo_di_Newton_%28ogv%29_a_2_sferette.ogg",
-  "author": "Riccardo Ottanta (own work, 2023)",
-  "licence": "CC0 1.0",
-  "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-  "attribution": "Riccardo Ottanta, Newton's cradle (2 balls), CC0, trimmed and re-encoded.",
-  "fps": {
-   "rational": "30/1",
-   "number": 30
-  },
-  "duration_s": 8.0,
-  "width": 1280,
-  "height": 960,
-  "trimmed_from": {
-   "start_s": 0.5,
-   "end_s": 8.5,
-   "note": "seconds into the 158 s source (1400x1050, 30 fps Theora); audio removed"
-  },
-  "camera_still": true,
-  "real_time": "unknown",
-  "real_time_evidence": "The page does not say. The title of the sibling files says 'rallentato' (slowed) for the 3- and 5-ball versions but not for this one. Ball swing period looks ~0.8 s with motion blur, consistent with real time, unverified.",
-  "duplicate_frames": "mpdecimate kept 240/240 frames.",
-  "scale_hints": [
-   {
-    "object": "ball diameter",
-    "size_m": null,
-    "source": "not documented"
-   }
-  ],
-  "expected": {
-   "note": "pendulum period T=2*pi*sqrt(L/g) once L known; L is not documented"
-  },
-  "notes": "MARGINAL. Impact-dominated, balls move fast with heavy motion blur and exit towards the frame edges; only the pendulum arc between impacts is useful. Cleaner than nothing but not a clean sinusoidal swing.",
-  "question": "What does the swing tell us about the strings and gravity?"
  }
 ]

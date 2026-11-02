@@ -169,7 +169,9 @@ export class Stage {
 
   sprite(x, y) {
     const s = this.data.sprite, m = this.data.spriteMeta;
-    if (s && m) this.ctx.drawImage(s, x - (m.cx - m.left), y - (m.cy - m.top));
+    // The fit may follow the object's top or bottom edge (see fit.point); anchor the cut-out at the same point.
+    const point = this.data.point, ax = point === 'top' ? m?.tx : point === 'bottom' ? m?.bx : m?.cx, ay = point === 'top' ? m?.ty : point === 'bottom' ? m?.by : m?.cy;
+    if (s && m) this.ctx.drawImage(s, x - (ax - m.left), y - (ay - m.top));
     else { this.ctx.fillStyle = COL.fork; this.ctx.beginPath(); this.ctx.arc(x, y, this.radius(), 0, 7); this.ctx.fill(); }
   }
 
