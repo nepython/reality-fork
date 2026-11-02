@@ -1,12 +1,12 @@
 {
- "at": "2026-11-02T08:55:29.852Z",
+ "at": "2026-11-02T09:12:37.595Z",
  "summary": {
   "clips": 9,
   "g_scored": 7,
   "g_median_abs_error_pct": 0.7530864197530857,
   "g_within_2sigma": 7,
   "spent_this_run_usd": 0,
-  "total_spent_usd": 1.1195
+  "total_spent_usd": 1.2117
  },
  "rows": [
   {
