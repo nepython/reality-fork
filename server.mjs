@@ -17,11 +17,12 @@ const PORT = Number(process.env.PORT || 8790);
 // ---- rate limiting for live (paid) runs ------------------------------------------------------------------------
 const LIVE_PER_HOUR = Number(process.env.RF_LIVE_PER_HOUR || 6);
 const hits = new Map();
-function allowLive(req) {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress;
-  const now = Date.now(), list = (hits.get(ip) || []).filter(t => now - t < 3600e3);
-  if (list.length >= LIVE_PER_HOUR) return false;
-  list.push(now); hits.set(ip, list);
+// Separate allowances per kind: a spoken question (a fraction of a cent) must not use up a visitor's live analyses.
+function allowLive(req, kind = 'live', perHour = LIVE_PER_HOUR) {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, key = kind + ' ' + ip;
+  const now = Date.now(), list = (hits.get(key) || []).filter(t => now - t < 3600e3);
+  if (list.length >= perHour) return false;
+  list.push(now); hits.set(key, list);
   return true;
 }
 
@@ -235,7 +236,7 @@ async function api(req, res, url) {
     const out = path.join(ASSETS, hashOf(clip.id, body.world, 'restyle') + '.jpg');
     if (!fs.existsSync(out)) {
       // Only a new picture is paid for, so only that counts against the hourly limit.
-      if (!allowLive(req)) return send(res, 429, {error: 'limit reached'});
+      if (!allowLive(req, 'restyle', 10)) return send(res, 429, {error: 'limit reached'});
       const img = await editImage({imageDataUrl: dataUrl(plate), prompt: worlds[body.world], size: `${info.width}x${info.height}`});
       fs.writeFileSync(out, encodeImage(decodeImage(Buffer.from(img.b64, 'base64'), info.width, info.height), 'jpeg', {quality: 2}));
     }
@@ -243,7 +244,7 @@ async function api(req, res, url) {
   }
 
   if (url.pathname === '/api/transcribe' && req.method === 'POST') {
-    if (!allowLive(req)) return send(res, 429, {error: 'limit reached'});
+    if (!allowLive(req, 'voice', 30)) return send(res, 429, {error: 'limit reached'});
     const wav = await readBody(req, 8 << 20);
     return send(res, 200, {text: await transcribe(wav, {keywords: ['gravity', 'pendulum', 'Moon', 'Mars', 'bounce', 'drag']})});
   }
