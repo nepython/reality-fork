@@ -37,9 +37,11 @@ export class Stage {
   redraw() { this.draw(this.frame); }
 
   // ---- fork playback -------------------------------------------------------------------------------------------
-  setFork(path, {label, start, end, baseline} = {}) {
+  setFork(path, {label, start, end, baseline, floor} = {}) {
     this.data.forkPath = path;
+    this.data.floorPx = floor ?? null;
     this.data.basePath = baseline || null;
+    this.cam = null;
     this.forking = !!path;
     this.forkLabel = label;
     this.forkEnd = end ?? (path ? path.at(-1)[0] : 0);
@@ -95,6 +97,12 @@ export class Stage {
   drawFork(frame) {
     const d = this.data, ctx = this.ctx;
     const inClip = frame <= d.frames - 1;
+    const cam = this.camera(frame);
+    if (cam.s < 0.999) {
+      ctx.fillStyle = '#070910'; ctx.fillRect(0, 0, d.width, d.height);
+      ctx.setTransform(cam.s, 0, 0, cam.s, d.width / 2 - cam.s * cam.cx, d.height / 2 - cam.s * cam.cy);
+      this.grid(cam);
+    }
     if (d.world) ctx.drawImage(d.world, 0, 0, d.width, d.height);
     else if (inClip) {
       ctx.drawImage(this.video, 0, 0, d.width, d.height);
@@ -110,14 +118,66 @@ export class Stage {
     if (this.show.path && d.fitPath) this.curve(d.fitPath, 'rgba(255,214,10,0.55)', 1.5, [4, 5]);
     this.curve(d.forkPath.filter(q => q[0] <= frame), COL.fork, 2.5);
     const p = d.forkPath.find(q => q[0] === frame) || (frame > this.forkEnd ? d.forkPath.at(-1) : null);
-    if (p && frame >= start) this.sprite(p[1], p[2]);
     this.gapText = '';
-    if (p && frame >= start && d.plateSteady === false) this.gapLines(frame, p);
-    else if (d.world && frame < start) { const q = d.track?.find(r => r[0] === frame); if (q) this.sprite(q[1], q[2]); }
+    if (p && frame >= start) {
+      this.sprite(p[1], p[2]);
+      // Pulled back, a ball is a few pixels across: ring it so the eye can follow it.
+      if (cam.s < 0.8) { ctx.strokeStyle = COL.fork; ctx.lineWidth = 2.5 / cam.s; ctx.beginPath(); ctx.arc(p[1], p[2], 14 / cam.s, 0, 7); ctx.stroke(); }
+      if (d.plateSteady === false) this.gapLines(frame, p);
+    } else if (d.world && frame < start) { const q = d.track?.find(r => r[0] === frame); if (q) this.sprite(q[1], q[2]); }
+    if (cam.s < 0.999) {
+      // The footage's own edges, so the viewer sees how far beyond the shot the fork has gone.
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2 / cam.s; ctx.setLineDash([]);
+      ctx.strokeRect(0, 0, d.width, d.height);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
     if (this.badge) {
       this.badge.hidden = false;
       const t = Math.max(0, (frame - start) / d.fps);
       this.badge.innerHTML = `<span class="k">${this.forkLabel || 'fork'}</span> · t = ${t.toFixed(2)} s${this.gapText ? ' · ' + this.gapText + ' than reality' : ''}`;
+    }
+  }
+
+  // Where the fork leaves the shot, pull the camera back (the server trims the path at three frames across) so the
+  // whole arc stays in view. It looks a few frames ahead and eases, so it moves before the object reaches the edge.
+  camera(frame) {
+    const d = this.data, W = d.width, H = d.height, b = this.spriteBox();
+    let x0 = 0, y0 = 0, x1 = W, y1 = H;
+    for (const q of d.forkPath) {
+      if (q[0] > frame + 8) break;
+      x0 = Math.min(x0, q[1] + b.l); x1 = Math.max(x1, q[1] + b.r); y0 = Math.min(y0, q[2] + b.t); y1 = Math.max(y1, q[2] + b.b);
+    }
+    const s = Math.min(1, W / ((x1 - x0) * 1.06), H / ((y1 - y0) * 1.06));
+    const target = s > 0.999 ? {s: 1, cx: W / 2, cy: H / 2} : {s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2};
+    const c = this.cam, k = 0.14;
+    this.cam = !c || Math.abs(frame - this.camFrame) > 3 ? target
+      : {s: c.s + (target.s - c.s) * k, cx: c.cx + (target.cx - c.cx) * k, cy: c.cy + (target.cy - c.cy) * k};
+    this.camFrame = frame;
+    return this.cam;
+  }
+
+  // The cut-out's box relative to the point the fit follows (centroid, top or bottom edge).
+  spriteBox() {
+    const m = this.data.spriteMeta, point = this.data.point;
+    if (!m) return {l: -20, r: 20, t: -20, b: 20};
+    const ax = point === 'top' ? m.tx : point === 'bottom' ? m.bx : m.cx, ay = point === 'top' ? m.ty : point === 'bottom' ? m.by : m.cy;
+    return {l: m.left - ax, r: m.left + m.width - ax, t: m.top - ay, b: m.top + m.height - ay};
+  }
+
+  // A faint metre grid in the dark beyond the footage: scale for how far out of shot the fork goes.
+  grid(cam) {
+    const d = this.data, ctx = this.ctx, ppm = d.ppm;
+    if (!ppm) return;
+    const step = ppm * (ppm * cam.s < 12 ? 10 : ppm * cam.s < 40 ? 5 : 1);
+    const vx0 = cam.cx - d.width / 2 / cam.s, vx1 = cam.cx + d.width / 2 / cam.s, vy0 = cam.cy - d.height / 2 / cam.s, vy1 = cam.cy + d.height / 2 / cam.s;
+    ctx.strokeStyle = 'rgba(120,140,190,0.13)'; ctx.lineWidth = 1 / cam.s; ctx.beginPath();
+    for (let x = Math.floor(vx0 / step) * step; x <= vx1; x += step) { ctx.moveTo(x, vy0); ctx.lineTo(x, vy1); }
+    for (let y = Math.floor(vy0 / step) * step; y <= vy1; y += step) { ctx.moveTo(vx0, y); ctx.lineTo(vx1, y); }
+    ctx.stroke();
+    // The floor the fork lands on, carried on beyond the footage on both sides.
+    if (d.floorPx != null) {
+      ctx.strokeStyle = 'rgba(214,180,130,0.6)'; ctx.lineWidth = 2 / cam.s; ctx.beginPath();
+      ctx.moveTo(vx0, d.floorPx); ctx.lineTo(0, d.floorPx); ctx.moveTo(d.width, d.floorPx); ctx.lineTo(vx1, d.floorPx); ctx.stroke();
     }
   }
 
@@ -208,7 +268,7 @@ export class Stage {
   }
 
   radius() { const t = this.data.track; return t?.length ? Math.max(4, (t[Math.floor(t.length / 2)][3] || 16) / 2) : 10; }
-  scale() { return this.data.width / 1280 + 0.4; }
+  scale() { return (this.data.width / 1280 + 0.4) / (this.forking && this.cam ? this.cam.s : 1); }
 
   curve(pts, color, width, dash = []) {
     if (!pts || pts.length < 2) return;

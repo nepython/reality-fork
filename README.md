@@ -55,7 +55,9 @@ flowchart LR
    stays on the pad). In the replay, each frame's SAM mask is filled from a clean background plate (the per-pixel
    median of the clip with the object's masks left out), and the object's cut-out is drawn on the forked path. When the
    scene changes behind the object (a launch's plume and lighting), no plate can be true, so the real object is veiled
-   instead and both are marked with race lines showing the gap in metres.
+   instead and both are marked with race lines showing the gap in metres. When the fork leaves the shot (a throw on the
+   Moon rises far above the room and lands 14 m away), the camera pulls back over a metre grid to follow it, with the
+   footage framed in the middle and the floor carried on beyond it.
 
 ## Accuracy
 

@@ -193,7 +193,7 @@ async function fork(f, button) {
     $('forkSummary').textContent = res.summary || '';
   }
   stage.setAnalysis({world});
-  stage.setFork(res.path, {label: f.label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline});
+  stage.setFork(res.path, {label: f.label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline, floor: res.floor_px});
   plot(stage.frame);
 }
 
