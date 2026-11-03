@@ -4,10 +4,9 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {probe, normalise, medianPlate, readFrames, encodeImage, encodeRGBA, decodeImage, dataUrl} from './lib/video.mjs';
-import {ROOT, ASSETS, UPLOADS, samples, clipById, clipInfo, runFile, latestRun, runLab} from './lib/store.mjs';
+import {medianPlate, readFrames, encodeImage, encodeRGBA, decodeImage, dataUrl} from './lib/video.mjs';
+import {ROOT, ASSETS, UPLOADS, samples, clipById, clipInfo, runFile, latestRun, runLab, saveUpload} from './lib/store.mjs';
 import {spent, editImage, transcribe, samCachedOnly, hashOf} from './lib/meta.mjs';
 import {parseSam, tracksFrom} from './lib/sam.mjs';
 import {forkPixels} from './lib/forkview.mjs';
@@ -155,13 +154,7 @@ async function api(req, res, url) {
 
   if (url.pathname === '/api/upload' && req.method === 'POST') {
     const body = await readBody(req);
-    const hash = crypto.createHash('sha256').update(body).digest('hex').slice(0, 24);
-    const tmp = path.join(UPLOADS, hash + '.src'), out = path.join(UPLOADS, hash + '.mp4');
-    if (!fs.existsSync(out)) {
-      fs.writeFileSync(tmp, body);
-      try { normalise(tmp, out); } finally { fs.rmSync(tmp, {force: true}); }
-    }
-    return send(res, 200, {id: 'upload:' + hash, url: '/uploads/' + hash + '.mp4', info: probe(out)});
+    return send(res, 200, saveUpload(body));
   }
 
   const clip = q.clip && clipById(q.clip);
@@ -268,4 +261,4 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) server.listen(PORT, () => console.log(`Reality Fork on http://localhost:${PORT}`));
-export {server};
+export {server, spriteFor};
