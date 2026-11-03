@@ -19,7 +19,8 @@ async function loadClips() {
   state.clips = await (await fetch('/api/clips')).json();
   const box = $('clips');
   box.innerHTML = '';
-  for (const c of state.clips) {
+  // Real footage first, then the upload tile; the synthetic test scenes sit behind a toggle so judges meet real clips.
+  const tile = c => {
     const b = document.createElement('button');
     b.className = 'clip'; b.dataset.id = c.id;
     b.innerHTML = `<div class="thumb">${c.poster ? `<img src="${c.poster}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<video src="${c.url}#t=0.2" muted preload="metadata"></video>`}</div>
@@ -27,12 +28,27 @@ async function loadClips() {
     b.querySelector('.title').textContent = c.title;
     b.querySelector('.kind span').textContent = c.motion || (c.synthetic ? 'test scene' : '');
     b.onclick = () => select(c);
-    box.append(b);
-  }
+    return b;
+  };
+  for (const c of state.clips.filter(c => !c.synthetic)) box.append(tile(c));
   const up = document.createElement('button');
   up.className = 'clip upload'; up.innerHTML = '<span><b>+</b>Upload a clip</span>';
   up.onclick = () => $('file').click();
   box.append(up);
+  const synth = state.clips.filter(c => c.synthetic);
+  if (!synth.length) return;
+  const tog = document.createElement('button');
+  tog.className = 'clip upload testToggle'; tog.setAttribute('aria-expanded', 'false'); tog.setAttribute('aria-controls', 'clips');
+  const tiles = synth.map(tile);
+  tiles.forEach(b => { b.hidden = true; b.classList.add('test'); });
+  const label = open => `<span><b>${open ? '\u2212' : '+'}</b>${open ? 'Hide' : 'Test scenes'} (${synth.length})</span>`;
+  tog.innerHTML = label(false);
+  tog.onclick = () => {
+    const open = tog.getAttribute('aria-expanded') !== 'true';
+    tog.setAttribute('aria-expanded', String(open)); tog.innerHTML = label(open);
+    tiles.forEach(b => b.hidden = !open);
+  };
+  box.append(tog, ...tiles);
 }
 
 async function select(c) {

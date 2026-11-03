@@ -38,6 +38,8 @@ h1 { font-size: 24px; margin: 0; letter-spacing: -0.02em; }
 .clip .kind { font: 11px var(--mono); color: var(--muted); margin-top: 3px; display: flex; gap: 6px; align-items: center; }
 .clip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .clip.upload { display: grid; place-items: center; border-style: dashed; color: var(--muted); min-height: 128px; font-size: 13px; }
+.clip[hidden] { display: none; }
+.clip.testToggle { flex: 0 0 120px; }
 .clip.upload b { display: block; font-size: 24px; color: var(--text); text-align: center; }
 
 /* main grid */

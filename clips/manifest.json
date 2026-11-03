@@ -39,7 +39,7 @@
   "expected": {
    "g": -5.2,
    "meaning": "net upward acceleration at liftoff (fitted g is negative: the rocket accelerates up)",
-   "source": "NASA: 8.8 Mlbf (39.1 MN) liftoff thrust, 5.75 Mlb (2.61 Mkg) liftoff mass; thrust/weight 1.53, so a = 0.53 g = 5.2 m/s\u00b2"
+   "source": "NASA: 8.8 Mlbf (39.1 MN) liftoff thrust, 5.75 Mlb (2.61 Mkg) liftoff mass; thrust/weight 1.53, so a = 0.53 g = 5.2 m/s²"
   },
   "question": "How hard does the rocket accelerate off the pad?",
   "notes": "Fixed pad camera at night. The base is below the frame and the lower rocket vanishes into exhaust glare, so the nose (top edge) is the clean point to track. Expected values are approximate: thrust ramps at ignition."
