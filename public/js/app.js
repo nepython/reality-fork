@@ -36,6 +36,8 @@ async function loadClips() {
 }
 
 async function select(c) {
+  // A replay still streaming for the previous clip would otherwise land its notebook, overlays and forks on this one.
+  state.es?.close(); state.es = null; $('run').disabled = false;
   state.clip = c; state.run = null; state.fit = null; state.fork = null; $('saveClip').hidden = true;
   document.querySelectorAll('.clip').forEach(b => b.classList.toggle('active', b.dataset.id === c.id));
   $('stageEmpty').hidden = true; $('forkbar').hidden = true; $('plotWrap').hidden = true; $('stageBadge').hidden = true;
@@ -43,6 +45,7 @@ async function select(c) {
   $('question').value = c.question || '';
   nb.clear(c.analysed ? 'analysed before: “Run the lab” replays it' : '');
   const run = await (await fetch(`/api/run?clip=${encodeURIComponent(c.id)}`)).json();
+  if (state.clip !== c) return;
   state.info = run.info || await probeInBrowser(c.url);
   stage.load(c.url, state.info);
   $('scrub').max = state.info.frames - 1; $('scrub').value = 0;
@@ -63,14 +66,16 @@ function run(live = false) {
   nb.clear('running…');
   $('run').disabled = true;
   stage.setFork(null);
-  const es = new EventSource(`/api/analyze?clip=${encodeURIComponent(state.clip.id)}&q=${encodeURIComponent($('question').value)}${live ? '&live=1' : ''}`);
+  state.es?.close();
+  const clip = state.clip, es = state.es = new EventSource(`/api/analyze?clip=${encodeURIComponent(state.clip.id)}&q=${encodeURIComponent($('question').value)}${live ? '&live=1' : ''}`);
   es.onmessage = async m => {
+    if (state.es !== es) return;
     const ev = JSON.parse(m.data);
     nb.event(ev);
     if (ev.type === 'tracks') showTracks(ev);
     if (ev.type === 'done' || ev.type === 'error') {
       es.close(); $('run').disabled = false;
-      if (ev.type === 'done') { await loadAnalysis(); markAnalysed(); }
+      if (ev.type === 'done') { await loadAnalysis(clip); markAnalysed(clip); }
     }
   };
   es.onerror = () => { es.close(); $('run').disabled = false; };
@@ -82,20 +87,21 @@ function showTracks(ev) {
   if (best) stage.setAnalysis({track: best.o.points});
 }
 
-function markAnalysed() {
-  const c = state.clips.find(x => x.id === state.clip.id); if (c) c.analysed = true;
-  const b = document.querySelector(`.clip[data-id="${CSS.escape(state.clip.id)}"] .kind`);
+function markAnalysed(clip) {
+  const c = state.clips.find(x => x.id === clip.id); if (c) c.analysed = true;
+  const b = document.querySelector(`.clip[data-id="${CSS.escape(clip.id)}"] .kind`);
   if (b && !b.querySelector('.dot')) b.insertAdjacentHTML('afterbegin', '<i class="dot"></i>');
 }
 
-async function loadAnalysis() {
-  const id = encodeURIComponent(state.clip.id);
+async function loadAnalysis(clip) {
+  const id = encodeURIComponent(clip.id), stale = () => state.clip !== clip;
   const runData = await (await fetch(`/api/run?clip=${id}`)).json();
-  if (!runData.report) return;
+  if (!runData.report || stale()) return;
   state.run = runData; state.info = runData.info;
   const rep = runData.report;
   const obj = rep.object in (rep.tracks || {}) ? rep.object : Object.keys(rep.tracks || {})[0];
   const fit = await post(`/api/fork?clip=${id}`, {overrides: {}});
+  if (stale()) return;
   // The dots are the points the fit actually followed (centroid, or an edge for a partly hidden object).
   const measured = rep.fit?.measured || rep.tracks[obj];
   state.fit = {track: measured, fitPath: fit.real, ppm: rep.fit?.ppm, origin: rep.fit?.origin_px, start: rep.fit?.frames?.[0] || 0};
@@ -111,6 +117,7 @@ async function loadAnalysis() {
   ]);
   // The plate is built by the request above, so its steadiness score exists now.
   const plateMeta = await fetch(`/api/plate?clip=${id}&meta=1`).then(r => r.ok ? r.json() : {steady: true}).catch(() => ({steady: true}));
+  if (stale()) return;
   stage.setAnalysis({masks, plate, sprite, spriteMeta, plateSteady: plateMeta.steady !== false});
   renderForks(rep);
 }
@@ -156,8 +163,14 @@ function renderForks(rep) {
   const box = $('forks'); box.innerHTML = '';
   const model = rep.fit?.model;
   const fromAgent = (rep.forks || []).map(f => ({label: f.label, g: f.g > 0 ? f.g : undefined, drag: f.drag === 'none' ? 'none' : undefined, e: f.e >= 0 ? f.e : undefined, why: f.why, agent: true}));
+  // A preset is left out when the agent already offers it, by name or by the same change under its own name
+  // ("same throw on Moon" is the Moon preset; "vacuum flight" is No air).
   const seen = new Set(fromAgent.map(f => f.label.toLowerCase()));
-  const list = [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
+  // Removing air from a law with no drag term changes nothing (lib/forkview.mjs drops it), so it does not count.
+  const hasDrag = rep.fit?.p?.b != null || rep.fit?.p?.gamma != null;
+  const near = (a, b) => a === b || (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < 0.01);
+  const sameAs = p => fromAgent.some(f => near(f.g, p.g) && (hasDrag ? f.drag === p.drag : !p.drag) && near(f.e, p.e));
+  const list = [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && !sameAs(p) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
   const real = document.createElement('button');
   real.className = 'fork real active'; real.innerHTML = 'Reality<small>as filmed</small>';
   real.onclick = () => { activate(real); stage.setFork(null); state.fork = null; $('saveClip').hidden = true; $('forkSummary').textContent = ''; $('stageBadge').hidden = true; plot(stage.frame); };
@@ -178,8 +191,9 @@ function activate(b) { document.querySelectorAll('.fork').forEach(x => x.classLi
 async function fork(f, button) {
   activate(button);
   const overrides = {}; if (f.g) overrides.g = f.g; if (f.drag) overrides.drag = f.drag; if (f.e != null) overrides.e = f.e;
-  const id = encodeURIComponent(state.clip.id);
+  const clip = state.clip, id = encodeURIComponent(clip.id);
   const res = await post(`/api/fork?clip=${id}`, {overrides});
+  if (state.clip !== clip) return;
   if (res.error) { $('forkSummary').textContent = res.error; return; }
   $('forkSummary').textContent = res.summary || '';
   let world = null;
@@ -190,6 +204,7 @@ async function fork(f, button) {
     $('forkSummary').textContent = 'Muse Image is repainting the scene…';
     const r = await post(`/api/restyle?clip=${id}`, {world: name});
     if (r.url) world = await image(r.url);
+    if (state.clip !== clip) return;
     $('forkSummary').textContent = res.summary || '';
   }
   stage.setAnalysis({world});

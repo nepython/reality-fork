@@ -159,7 +159,7 @@ export class Stage {
     }
   }
 
-  // Where the fork leaves the shot, pull the camera back (the server trims the path at three frames across) so the
+  // Where the fork leaves the shot, pull the camera back (the server trims the path at five frames across) so the
   // whole arc stays in view. It looks a few frames ahead and eases, so it moves before the object reaches the edge.
   camera(frame) {
     const d = this.data, W = d.width, H = d.height, b = this.spriteBox();
@@ -168,8 +168,11 @@ export class Stage {
       if (q[0] > frame + 8) break;
       x0 = Math.min(x0, q[1] + b.l); x1 = Math.max(x1, q[1] + b.r); y0 = Math.min(y0, q[2] + b.t); y1 = Math.max(y1, q[2] + b.b);
     }
-    const s = Math.min(1, W / ((x1 - x0) * 1.06), H / ((y1 - y0) * 1.06));
-    const target = s > 0.999 ? {s: 1, cx: W / 2, cy: H / 2} : {s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2};
+    const fits = Math.min(1, W / ((x1 - x0) * 1.06), H / ((y1 - y0) * 1.06));
+    // Pulled back, keep the top 12% clear: the badge (and a saved clip's caption) sits there, and a climbing rocket's
+    // nose and its fork marker ended up under it.
+    const room = 0.12 * H, s = Math.min(1, W / ((x1 - x0) * 1.06), (H - room) / ((y1 - y0) * 1.06));
+    const target = fits > 0.999 ? {s: 1, cx: W / 2, cy: H / 2} : {s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 - room / 2 / s};
     const c = this.cam, k = 0.14;
     this.cam = !c || Math.abs(frame - this.camFrame) > 3 ? target
       : {s: c.s + (target.s - c.s) * k, cx: c.cx + (target.cx - c.cx) * k, cy: c.cy + (target.cy - c.cy) * k};
@@ -284,7 +287,9 @@ export class Stage {
     tick(q[1], q[2], COL.measured, 'reality', false);
     const gap = d.ppm ? Math.hypot(p[1] - q[1], p[2] - q[2]) / d.ppm : null;
     this.gapText = gap != null && gap >= 0.5 ? `${gap.toFixed(gap < 10 ? 1 : 0)} m ${p[2] < q[2] ? 'higher' : 'lower'}` : '';
-    tick(p[1], p[2], COL.fork, (this.forkLabel || 'fork') + (this.gapText ? '  ' + this.gapText : ''), true);
+    // Just "fork", matching "reality": the label and the gap are in the badge, and repeating them here put a second
+    // copy beside the badge once the forked rocket climbed to the top of the picture.
+    tick(p[1], p[2], COL.fork, 'fork', true);
     ctx.restore();
   }
 
