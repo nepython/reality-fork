@@ -1,5 +1,46 @@
 [
  {
+  "id": "apollo16_jump_salute",
+  "file": "apollo16_jump_salute.mp4",
+  "poster": "apollo16_jump_salute.jpg",
+  "title": "John Young's jump salute on the Moon (Apollo 16, 21 Apr 1972)",
+  "motion": "jump",
+  "source_page": "https://apollojournals.org/alsj/a16/video16.html",
+  "download_url": "https://apollojournals.org/alsj/a16/a16salute.mpg",
+  "author": "NASA (Apollo 16 rover TV camera; clip prepared by Ken Glover for the Apollo Lunar Surface Journal)",
+  "licence": "Public domain (NASA work; ALSJ video clips)",
+  "licence_url": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+  "attribution": "Apollo 16 rover TV, John Young's Big Navy Salute. NASA / Apollo Lunar Surface Journal, public domain; trimmed, upscaled 2x and re-encoded.",
+  "fps": {
+   "rational": "30000/1001",
+   "number": 29.97
+  },
+  "duration_s": 3.37,
+  "width": 704,
+  "height": 480,
+  "trimmed_from": {
+   "source_frames": "211-311 of a16salute.mpg (352x240, 29.97 fps)",
+   "start_s": 7.04,
+   "end_s": 10.41
+  },
+  "camera_still": true,
+  "real_time": true,
+  "scale_hints": [
+   {
+    "object": "Astronaut in the A7L suit with PLSS, standing height (the jumper is about 1.8 m tall in the suit)",
+    "size_m": 1.8,
+    "source": "John Young was 5 ft 9 in (1.75 m) tall; the suit and backpack add little standing height. Approximate: check against ALSJ/NASA biography."
+   }
+  ],
+  "expected": {
+   "g": 1.62,
+   "meaning": "lunar surface gravity (the jump gives a smaller-than-Earth value; the fit will be rough because of the 1972 TV resolution)",
+   "source": "NASA Moon Fact Sheet: 1.62 m/s2"
+  },
+  "question": "John Young jumps and salutes. What is the gravity on the Moon?",
+  "notes": "Apollo 16 EVA-1, 21 Apr 1972, rover TV camera parked near the flag; Young is the large figure in front (about 270 px tall in the 704x480 clip, seen from behind and slightly side-on), Duke is the small figure by the flag. Camera still throughout the trimmed clip (flag and horizon fixed). Take-off about frame 29 (0.97 s), peak about frame 49, landing about frame 69 (2.3 s), so roughly 1.3 s in the air; clip runs 0-3.37 s (101 frames at 29.97 fps). Original is 352x240 at 29.97 fps, upscaled 2x by us. No exact duplicate frames in the trimmed range, but the frame differences dip every fifth frame, a sign the TV copy was converted from a 24 fps source (film or a 24-to-30 conversion): effective sampling may be about 24 fps with blended frames, so expect timing jitter of up to one frame. Back-lit by the sun: the astronaut's legs can be dark. Young also waves/salutes with his right arm during the jump."
+ },
+ {
   "id": "artemis1_liftoff",
   "file": "artemis1_liftoff.mp4",
   "poster": "artemis1_liftoff.jpg",

@@ -186,7 +186,9 @@ function renderForks(rep) {
   const hasDrag = rep.fit?.p?.b != null || rep.fit?.p?.gamma != null;
   const near = (a, b) => a === b || (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < 0.01);
   const sameAs = p => fromAgent.some(f => near(f.g, p.g) && (hasDrag ? f.drag === p.drag : !p.drag) && near(f.e, p.e));
-  const list = [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && !sameAs(p) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
+  // Nor is a world offered where the clip was filmed: "Moon" on Apollo footage would replay reality.
+  const filmed = Number.isFinite(rep.filmed_g) ? rep.filmed_g : 9.81, home = p => p.g != null && Math.abs(p.g - filmed) < 0.05;
+  const list = [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && !sameAs(p) && !home(p) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
   const real = document.createElement('button');
   real.className = 'fork real active'; real.innerHTML = 'Reality<small>as filmed</small>';
   real.onclick = () => { activate(real); stage.setFork(null); state.fork = null; $('saveClip').hidden = true; $('forkSummary').textContent = ''; $('stageBadge').hidden = true; plot(stage.frame); };

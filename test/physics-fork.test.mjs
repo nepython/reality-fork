@@ -26,7 +26,7 @@ test('Moon fall time / Earth fall time = sqrt(9.81 / 1.62) for a drop from rest'
   const earth = fork(fit, {}, { fps: 30 });
   const ratio = (landing(moon).t - moon.t[0]) / (landing(earth).t - earth.t[0]);
   assert.ok(rel(ratio, Math.sqrt(9.81 / 1.62)) < 0.02, `ratio ${ratio} vs ${Math.sqrt(9.81 / 1.62)}`);
-  assert.match(moon.summary, /^On the Moon it falls for \d\.\d\d s instead of 0\.\d\d s\.$/);
+  assert.match(moon.summary, /^On the Moon it is in the air for \d\.\d\d s instead of 0\.\d\d s\.$/);
   assert.ok(moon.t.at(-1) > landing(moon).t, 'simulation continues past the landing, longer than the real clip');
   assert.ok(moon.t.at(-1) > 1.9);
 });

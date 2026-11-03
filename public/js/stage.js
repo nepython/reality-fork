@@ -168,11 +168,13 @@ export class Stage {
       if (q[0] > frame + 8) break;
       x0 = Math.min(x0, q[1] + b.l); x1 = Math.max(x1, q[1] + b.r); y0 = Math.min(y0, q[2] + b.t); y1 = Math.max(y1, q[2] + b.b);
     }
-    const fits = Math.min(1, W / ((x1 - x0) * 1.06), H / ((y1 - y0) * 1.06));
+    // Pull back only when the cut-out really leaves the shot (a few pixels over the edge is not worth it). The margin
+    // used to apply to a box that already filled the frame, so every fork was shown a little pulled back.
+    const tol = 0.02 * Math.max(W, H), out = x0 < -tol || y0 < -tol || x1 > W + tol || y1 > H + tol;
     // Pulled back, keep the top 12% clear: the badge (and a saved clip's caption) sits there, and a climbing rocket's
     // nose and its fork marker ended up under it.
     const room = 0.12 * H, s = Math.min(1, W / ((x1 - x0) * 1.06), (H - room) / ((y1 - y0) * 1.06));
-    const target = fits > 0.999 ? {s: 1, cx: W / 2, cy: H / 2} : {s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 - room / 2 / s};
+    const target = !out ? {s: 1, cx: W / 2, cy: H / 2} : {s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 - room / 2 / s};
     const c = this.cam, k = 0.14;
     this.cam = !c || Math.abs(frame - this.camFrame) > 3 ? target
       : {s: c.s + (target.s - c.s) * k, cx: c.cx + (target.cx - c.cx) * k, cy: c.cy + (target.cy - c.cy) * k};
@@ -198,10 +200,12 @@ export class Stage {
     for (let x = Math.floor(vx0 / step) * step; x <= vx1; x += step) { ctx.moveTo(x, vy0); ctx.lineTo(x, vy1); }
     for (let y = Math.floor(vy0 / step) * step; y <= vy1; y += step) { ctx.moveTo(vx0, y); ctx.lineTo(vx1, y); }
     ctx.stroke();
-    // The floor the fork lands on, carried on beyond the footage on both sides.
+    // The floor the fork lands on, carried on beyond the footage on both sides. floorPx is where the tracked point
+    // stops (a ball's centre, a jumper's backpack); the floor itself is under the cut-out's bottom edge.
     if (d.floorPx != null) {
+      const y = d.floorPx + Math.max(0, this.spriteBox().b);
       ctx.strokeStyle = 'rgba(214,180,130,0.6)'; ctx.lineWidth = 2 / cam.s; ctx.beginPath();
-      ctx.moveTo(vx0, d.floorPx); ctx.lineTo(0, d.floorPx); ctx.moveTo(d.width, d.floorPx); ctx.lineTo(vx1, d.floorPx); ctx.stroke();
+      ctx.moveTo(vx0, y); ctx.lineTo(0, y); ctx.moveTo(d.width, y); ctx.lineTo(vx1, y); ctx.stroke();
     }
   }
 

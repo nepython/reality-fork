@@ -69,6 +69,7 @@ Full table: [bench/RESULTS.md](bench/RESULTS.md); reproduce with `node bench/run
 | clip | law the agent found | measured | truth | error |
 |---|---|---|---|---|
 | Artemis I liftoff (NASA) | free flight with negative g (powered ascent) | net 5.07 ± 0.16 m/s² upward | 5.2 m/s² (39 MN thrust, 2,600 t) | 2.5% |
+| Apollo 16 jump salute (NASA TV, 1972) | free flight (his backpack through the jump) | g = 1.85 ± 0.18 m/s² | 1.62 m/s² (the Moon) | 14%, 1.3σ |
 | ISS: globe tossed in orbit (NASA) | free flight between hand contacts | g = 0.024 ± 0.008 m/s² | 0 (orbit) | 0.2% of Earth's g |
 | bounce | bouncing | g 9.75 ± 0.43, e 0.780 | 9.81, 0.78 | 0.6%, 0.0% |
 | drop (30 fps / 60 fps) | free flight | 9.36 ± 0.43 / 9.74 ± 0.43 m/s² | 9.81 | 4.6% / 0.7% |
@@ -78,8 +79,12 @@ Full table: [bench/RESULTS.md](bench/RESULTS.md); reproduce with `node bench/run
 | incline | rolling down a slope | 1.46 ± 0.07 m/s² | 1.46 | 0.1% |
 | float | constant velocity | 0.963 ± 0.043 m/s | 0.966 | 0.3% |
 
-Median error in g: **0.75%** over seven clips, and every value agrees with the truth within 2σ. The error bars are
-dominated by the assumed size of the scale object, which the agent states with its uncertainty.
+Median error in g: **0.75%** over the seven test scenes, and every value, NASA footage included, agrees with the truth
+within 2σ. The error bars are dominated by the assumed size of the scale object, which the agent states with its
+uncertainty. The 1972 Moon footage is 352×240 analogue TV, probably converted from 24 fps, and the scale is the suited
+astronaut's height (1.9 ± 0.12 m), so its 10% error bar is honest rather than loose. One NASA clip did not work: in the
+Apollo 15 hammer-and-feather drop SAM 3.1 could not find the thin, faint hammer in the 1971 TV picture, and the agent
+said it saw no free fall instead of inventing a number.
 
 ## Built during the hackathon
 
