@@ -98,6 +98,13 @@ astronaut's height (1.9 ± 0.12 m), so its 10% error bar is honest rather than l
 Apollo 15 hammer-and-feather drop SAM 3.1 could not find the thin, faint hammer in the 1971 TV picture, and the agent
 said it saw no free fall instead of inventing a number.
 
+**Street speeds.** Eight cars crossing one junction (Joliet, Illinois; a fixed 4K camera, CC BY 4.0, in
+`clips/` and `bench/street/`), each analysed live by the agent with the car's own length as the scale: the white SUV in
+the demo did 17 ± 1 km/h, the others 28.5 to 42 km/h. The `speed_survey` tool gives a mean of 30 km/h and an
+85th-percentile speed of 33 km/h (68% range 30 to 39 from the clips' error bars); 4 of 8 were over 30 km/h. There is no
+radar ground truth for these, so they show the method rather than validate it. The view is oblique (the road recedes
+about 10% across the frame), and three clips have wide error bars (±9 to ±12 km/h).
+
 ## Built during the hackathon
 
 Everything in this repository was written during the event (Oct 27 – Nov 4, 2026); the commit history shows it. No earlier
