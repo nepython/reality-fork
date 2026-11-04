@@ -1,5 +1,41 @@
 [
  {
+  "id": "street_car",
+  "file": "street_car.mp4",
+  "poster": "street_car.jpg",
+  "title": "A white SUV crossing a signalised junction (Caton Farm Road / Essington Road, Joliet, Illinois, 22 Aug 2026)",
+  "motion": "car passing",
+  "source_page": "https://commons.wikimedia.org/wiki/File:Views_of_the_Caton_Farm_Road_and_Essington_Road_Intersection_in_Joliet,_Illinois.webm",
+  "download_url": "https://upload.wikimedia.org/wikipedia/commons/5/53/Views_of_the_Caton_Farm_Road_and_Essington_Road_Intersection_in_Joliet%2C_Illinois.webm",
+  "author": "Illinois_Roadbuff (Rogue Jr), via Wikimedia Commons",
+  "licence": "CC BY 4.0",
+  "licence_url": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "Views of the Caton Farm Road and Essington Road Intersection in Joliet, Illinois, by Illinois_Roadbuff (Rogue Jr), CC BY 4.0, via Wikimedia Commons. Trimmed (0.0-4.4 s of the first fixed-camera segment), audio removed, scaled from 4096x2160 (non-square pixels, 15:16) to 1280x720 and re-encoded.",
+  "fps": {
+   "rational": "19001/317",
+   "number": 59.94
+  },
+  "duration_s": 4.4,
+  "width": 1280,
+  "height": 720,
+  "trimmed_from": {
+   "source_frames": "first 4.4 s of the file (about 264 frames at 59.94 fps)",
+   "start_s": 0,
+   "end_s": 4.4
+  },
+  "camera_still": true,
+  "real_time": true,
+  "scale_hints": [
+   {
+    "object": "The white SUV itself: looks like a GMC Acadia (second generation, 2017-2023), bumper to bumper about 4.9 m. Identified by eye from the shape and tail-lights, NOT confirmed, so treat as an estimate; any mid-size SUV is 4.7-5.0 m.",
+    "size_m": 4.9,
+    "source": "Estimate (GMC Acadia 2017-2019 is about 193.6 in = 4.92 m per the manufacturer's spec; verify, and the model may be wrong). About 610 px long at 2.4 s in the 1280x720 frame."
+   }
+  ],
+  "question": "How fast is this car going, in km/h?",
+  "notes": "Source: a 131 s, 4K, 59.94 fps tripod-mounted compilation of an intersection; this is the first segment (0-59 s), one fixed shot (pole, signal head and wires stay put; at most a few px of drift). Not a school street: a four-lane signalised junction in the US, so the vehicle is turning or pulling away on a green and is probably slow (by eye roughly 15-25 km/h; this is NOT a measurement). A '30' sign is visible beyond the pole (probably 30 mph; not verified). Timeline: the SUV's front appears at the left edge at about 0.55 s (frame ~33), the whole car is in shot from about 1.4 s, it moves left to right, passes behind the grey signal pole (x about 1000-1060 px) at about 3.0-3.6 s and is gone by about 3.8 s (frame ~228); a dark SUV enters at the left edge at about 4.0 s, so it is not in the trimmed clip except for a sliver at the very end. Length in frame: about 610 px (bumper to bumper) at 2.4 s, shrinking to about 545 px by 3.0 s because the car recedes slightly (the road runs away to the right), so the scale is NOT constant: perspective is oblique, not purely side-on, and the car is rotated slightly toward the camera at the start. Scale references: the SUV (about 4.9 m, estimate); the white zebra crosswalk bars behind it (US ladder bars, nominal 0.3-0.6 m wide, spacing 0.6-1.2 m; unverified); the 30 sign. The frame has thin black letterbox bars at top and bottom (about 22 px). Plates: the rear plate faces the camera at the start but is about 20 px wide and not legible; the windows are tinted and the driver is not identifiable. No people are visible in the clip. Other cars in the distance are tiny. Licence: CC BY 4.0, so keep the credit."
+ },
+ {
   "id": "apollo16_jump_salute",
   "file": "apollo16_jump_salute.mp4",
   "poster": "apollo16_jump_salute.jpg",
@@ -56,12 +92,12 @@
    "rational": "30/1",
    "number": 30
   },
-  "duration_s": 9.0,
+  "duration_s": 9,
   "width": 1280,
   "height": 720,
   "trimmed_from": {
-   "start_s": 1090.0,
-   "end_s": 1099.0
+   "start_s": 1090,
+   "end_s": 1099
   },
   "camera_still": true,
   "real_time": true,
@@ -101,7 +137,7 @@
    "rational": "30/1",
    "number": 30
   },
-  "duration_s": 8.0,
+  "duration_s": 8,
   "width": 1280,
   "height": 720,
   "trimmed_from": {
@@ -122,7 +158,7 @@
   ],
   "expected": {
    "constant_velocity_between_pushes": true,
-   "g": 0.0,
+   "g": 0,
    "source": "free flight in orbit, apparent g ~ 0"
   },
   "notes": "Wide static shot of the Columbus module. The globe (~0.3-0.4 m, size undocumented) is pushed and caught by the astronaut, so only the free-flight stretches between contacts (first ~2 s, then around 3-4 s) are constant velocity. Ball is ~40-60 px wide. Wider-than-ideal background clutter.",
