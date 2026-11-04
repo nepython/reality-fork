@@ -175,10 +175,15 @@ async function api(req, res, url) {
   if (url.pathname === '/api/analyze') {
     res.writeHead(200, {'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive'});
     const emit = ev => res.write(`data: ${JSON.stringify(ev)}\n\n`);
-    const file = runFile(clip.id, q.q);
-    if (fs.existsSync(file) && q.live !== '1') {
+    const file = runFile(clip.id, q.q), norm = s => (s || '').trim().toLowerCase();
+    // A sample's own question (the one the page fills in) replays its saved run under whatever wording that run was made
+    // with. The street car was analysed from the CLI with no question, so without this every visitor's first "Run the
+    // lab" on it would have been a paid live run (4 Nov 2026).
+    const saved = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8'))
+      : clip.question && norm(q.q) === norm(clip.question) ? latestRun(clip.id) : null;
+    if (saved && q.live !== '1') {
       // Replay a finished run quickly: the browser's director (public/js/director.js) decides how long each step stays up.
-      const run = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const run = saved;
       for (const ev of run.events) { emit(ev); await new Promise(r => setTimeout(r, ev.type === 'sam' ? 4 : 60)); }
       emit({type: 'done', replay: true});
       return res.end();

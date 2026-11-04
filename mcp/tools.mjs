@@ -49,6 +49,8 @@ function resolveClip({path: file, clip_id}) {
 
 export async function analyze_video({path: file, clip_id, question, live = false} = {}) {
   const clip = resolveClip({path: file, clip_id});
+  // A sample asked nothing is asked its own question, so the run is saved under the wording the web page fills in.
+  question ??= clip.question;
   const exact = runFile(clip.id, question), allowed = live === true && process.env.RF_ALLOW_LIVE === '1';
   // A saved run for this very question is free; a different question gets a new run when live runs are allowed, and
   // otherwise the clip's latest run with a note (asking the same clip something new is how a user steers the lab).
