@@ -10,9 +10,10 @@
 .fm-head { flex: none; margin-bottom: calc(10px * var(--u)); }
 .fm-head h2 { margin: 0; font-size: max(20px, calc(26px * var(--u))); line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
 .fm-head h2 em { font-style: normal; background: linear-gradient(90deg, var(--fk), #ff9d2e 60%, #ffd60a); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.fm-head p { margin: calc(4px * var(--u)) 0 0; max-width: 68ch; font-size: calc(13px * var(--u)); line-height: 1.35; color: var(--muted, #8b93a7); }
+.fm-head p { margin: calc(4px * var(--u)) 0 0; font-size: calc(13px * var(--u)); line-height: 1.35; color: var(--muted, #8b93a7); }
 .fm-head p span { color: #b8c0d4; }
-.fm.short .fm-head p { display: none; }
+.fm-head .fm-q { color: #fff; font-weight: 600; }
+.fm.short .fm-head p span { display: none; }
 .fm.short .fm-head h2 { font-size: max(19px, calc(22px * var(--u))); }
 
 .fm-grid { flex: 1; min-height: 0; display: grid; gap: calc(12px * var(--u)); grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); align-content: stretch; }
@@ -55,7 +56,7 @@
 .fm-warn { position: absolute; right: calc(8px * var(--u)); bottom: calc(7px * var(--u)); z-index: 2; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: var(--warn, #ffb020); color: #0b0d12; font: 800 12px var(--mono, monospace); }
 
 .fm-tx { flex: none; display: flex; flex-direction: column; gap: calc(2px * var(--u)); padding: calc(8px * var(--u)) calc(11px * var(--u)) calc(9px * var(--u)); }
-.fm-name { font-size: max(11px, calc(13px * var(--u))); font-weight: 600; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+.fm-name { font-size: max(11px, calc(13px * var(--u))); font-weight: 600; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #fff; }
 .fm-big { font: 700 max(13px, calc(15px * var(--u))) / 1.15 var(--sans, sans-serif); color: var(--acc); min-height: 1.15em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .fm-small { font: max(9.5px, calc(11px * var(--u))) / 1.2 var(--mono, monospace); color: var(--muted, #8b93a7); min-height: 1.2em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fm-card.err .fm-small { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

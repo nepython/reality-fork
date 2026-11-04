@@ -73,6 +73,14 @@ flowchart LR
    7 m/s², stopping short or reaching them at a stated speed, on the footage and on a bird's-eye strip of thinking and
    braking distance drawn to scale. Both numbers are assumptions and every summary says so.
 
+**In the browser** (`public/`): clicking a sample sends its own question into the chat and replays its saved run at
+once (free; a clip that has no saved run, an upload, or a click made while a run is going waits for **Run the lab**;
+`js/app.js` `select`). The chat's title is the question (a sample's `chat_title` in `clips/manifest.json` when the
+question is over 48 characters, else the question itself; a typed question is trimmed in code, `js/whatif.js`
+`shortTitle`). The **Reality Fork** button is a pill at the lower right of the video (`placeForkBtn` moves it clear of
+the object, the car strip and the fork bar) and also a button inside the chat's last message; both open the fork menu,
+whose cards read as "What if…" questions (`whatIf` in `js/whatif.js`) under a header that repeats the question.
+
 ## Accuracy
 
 Every number below is the agent's own run, end to end (Muse Spark choosing prompts, SAM 3.1 tracking, the fits), scored

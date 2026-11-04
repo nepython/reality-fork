@@ -13,9 +13,10 @@ function show(el) {
   el.setAttribute('aria-describedby', 'tip');
   const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect(), pad = 8;
   const side = el.dataset.tipSide || 'top';
-  let x = side === 'right' ? r.right + 10 : r.left + r.width / 2 - t.width / 2;
-  let y = side === 'right' ? r.top + r.height / 2 - t.height / 2 : r.top - t.height - 8;
-  if (side !== 'right' && y < pad) y = r.bottom + 8;
+  const beside = side === 'right' || side === 'left';
+  let x = side === 'right' ? r.right + 10 : side === 'left' ? r.left - t.width - 10 : r.left + r.width / 2 - t.width / 2;
+  let y = beside ? r.top + r.height / 2 - t.height / 2 : side === 'bottom' ? r.bottom + 8 : r.top - t.height - 8;
+  if (!beside && side !== 'bottom' && y < pad) y = r.bottom + 8;
   x = Math.max(pad, Math.min(innerWidth - t.width - pad, x)); y = Math.max(pad, Math.min(innerHeight - t.height - pad, y));
   tip.style.left = x + 'px'; tip.style.top = y + 'px';
 }

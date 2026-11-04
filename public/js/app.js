@@ -6,6 +6,7 @@ import {Voice} from './voice.js';
 import {Director} from './director.js';
 import {decodeMasks} from './masks.js';
 import {vehicleOf, kmhText, roadY} from './vehicle.js';
+import {whatIf, shortTitle} from './whatif.js';
 
 const $ = id => document.getElementById(id);
 const state = {vehicle: null, hazardPx: null, clips: [], clip: null, info: null, run: null, fit: null, axis: 'y'};
@@ -16,6 +17,21 @@ const stage = new Stage({video: $('video'), canvas: $('overlay'), badge: $('stag
   if (state.fit) plot(f);
 }});
 const nb = new Notebook({list: $('steps'), state: $('nbState')});
+// The chat's title is the question being asked, cut with an ellipsis; its tooltip holds the whole question and, after it,
+// what the lab is doing ("replayed from a saved run"), which used to sit in the header. state.qTitle also heads the fork menu.
+function setChatQ(title, full = title) {
+  state.qTitle = title; state.question = full;
+  const el = $('chatQ'); el.textContent = title || 'Pick a clip to begin'; el.classList.toggle('muted', !title);
+  refreshChatTip();
+}
+function refreshChatTip() {
+  const el = $('chatQ'), st = $('nbState').textContent;
+  el.dataset.tip = [state.question, st && `(${st})`].filter(Boolean).join(' ');
+  if (!el.dataset.tip) delete el.dataset.tip;
+}
+new MutationObserver(refreshChatTip).observe($('nbState'), {childList: true, characterData: true, subtree: true});
+// A sample's question is its own title when short, else the manifest's chat_title; anything else is trimmed in code.
+const titleOf = (clip, q) => q ? shortTitle(q) : clip.question ? (clip.question.length <= 48 ? clip.question : clip.chatTitle || shortTitle(clip.question)) : clip.title;
 nb.clear();
 // The director paces a run's events into chat messages and acts on the stage; these are its ways into the app.
 const director = new Director({stage, nb, video: $('video'), badge: $('stageBadge'), hooks: {
@@ -100,6 +116,9 @@ async function openChooser() {
 menuBtn.onclick = () => chooserShut() ? openChooser() : closeChooser();
 
 async function select(c) {
+  // Choosing a sample sends its own question at once, as if Run were pressed, unless a run is going (that choice only
+  // switches clips, as before) or the clip is not a sample. Whether to send is settled below, once the saved run is known.
+  const midRun = $('run').disabled || director.playing;
   // A replay still streaming for the previous clip would otherwise land its notebook, overlays and forks on this one.
   state.es?.close(); state.es = null; $('run').disabled = false; $('skip').hidden = true;
   director.cancel();
@@ -109,14 +128,18 @@ async function select(c) {
   $('stageBadge').hidden = true;
   $('credit').textContent = c.credit || ''; $('credit').dataset.tip = c.credit || ''; $('credit').dataset.tipSide = 'top';
   $('question').value = '';
+  setChatQ(titleOf(c), c.question || '');
   closeChooser({focus: false});
   nb.clear(c.analysed ? 'analysed before: “Run the lab” replays it' : '');
   $('question').disabled = false;
-  const run = await (await fetch(`/api/run?clip=${encodeURIComponent(c.id)}`)).json();
+  const saved = await (await fetch(`/api/run?clip=${encodeURIComponent(c.id)}`)).json();
   if (state.clip !== c) return;
-  state.info = run.info || await probeInBrowser(c.url);
+  state.info = saved.info || await probeInBrowser(c.url);
   stage.load(c.url, state.info);
   $('scrub').max = state.info.frames - 1; $('scrub').value = 0;
+  // Only a sample whose run is saved is sent: the server replays a saved run for the clip's own question at no cost, so
+  // this can never start a live (paid) analysis. An unanalysed sample waits for Run, as before.
+  if (!midRun && c.id.startsWith('sample:') && c.question && saved.report) run();
 }
 
 function probeInBrowser(url) {
@@ -131,6 +154,7 @@ function probeInBrowser(url) {
 function run(live = false) {
   if (!state.clip) return;
   const clip = state.clip, asked = $('question').value, q = asked.trim();
+  setChatQ(titleOf(clip, q), q || clip.question || '');
   // An empty box asks the clip's own question (the server does the same, so a sample replays its saved run).
   nb.user(q || clip.question || 'What physics is happening here? Measure it.');
   $('question').value = '';
@@ -282,20 +306,38 @@ function forkItems() {
   return [{label: 'Reality', why: 'as filmed', real: true, overrides: {}}, ...list.slice(0, 7).map(f => ({...f, overrides: overridesFor(f)}))];
 }
 
-// The pill that invites a fork. It sits on the frame's left edge at mid-height, or higher or lower when the tracked
-// object passes there.
+// The pill that invites a fork. It sits inside the frame at the lower right and moves up the right edge when something
+// is in the way: the tracked object's path or the fork's, a car fork's bird's-eye strip, and the in-frame fork bar.
 function showForkBtn() {
   const btn = $('forkBtn'); if (!btn.hidden) return;
-  placeForkBtn();
   btn.hidden = false;
+  placeForkBtn();
   $('crossHint').hidden = !state.vehicle;
 }
 function placeForkBtn() {
-  const W = state.info.width, H = state.info.height, pts = state.fit?.track || [];
-  // Clear of the tracked object's way past the left edge, and of a car fork's bird's-eye strip (stage.strip.layout).
-  const st = stage.forking ? stage.strip?.layout : null;
-  const busy = y => pts.some(p => p[1] < 0.3 * W && Math.abs(p[2] - y * H) < 0.22 * H) || st && y * H > st.y - 0.08 * H && y * H < st.y + st.h + 0.08 * H;
-  $('forkBtn').style.top = ([0.5, 0.78, 0.22].find(y => !busy(y)) ?? 0.5) * 100 + '%';
+  const btn = $('forkBtn'); if (btn.hidden || !state.info) return;
+  const stg = $('stage'), sw = stg.clientWidth, sh = stg.clientHeight, W = state.info.width, H = state.info.height;
+  if (!sw || !sh) return;
+  // The video is letterboxed inside the frame (object-fit: contain), so frame pixels map through a scale and an offset.
+  const sc = Math.min(sw / W, sh / H), ox = (sw - W * sc) / 2, oy = (sh - H * sc) / 2;
+  const pw = btn.offsetWidth || 150, ph = btn.offsetHeight || 42, right = 14, margin = 18;
+  const pts = [...(state.fit?.track || []), ...(stage.forking ? stage.data.forkPath || [] : [])].map(p => [ox + p[1] * sc, oy + p[2] * sc]);
+  const L = stage.forking ? stage.strip?.layout : null, strip = L && {x: ox + L.x * sc, y: oy + L.y * sc, w: L.w * sc, h: L.h * sc};
+  // The fork bar is a DOM element along the bottom of the frame; the pill must clear it.
+  const bar = $('forkActive').hidden ? null : $('forkActive').getBoundingClientRect(), sr = stg.getBoundingClientRect();
+  const floor = bar ? bar.top - sr.top - 10 : sh - 14;
+  const busy = top => {
+    const r = {l: sw - right - pw - margin, t: top - margin, r: sw - right + margin, b: top + ph + margin};
+    return pts.some(p => p[0] > r.l && p[0] < r.r && p[1] > r.t && p[1] < r.b)
+      || strip && r.r > strip.x && r.l < strip.x + strip.w && r.b > strip.y && r.t < strip.y + strip.h
+      || top + ph > floor || top < 56;
+  };
+  // Candidate tops, from the bottom up: first the lowest place that clears the bar, then every ~12% of the frame upward.
+  const tops = [floor - ph]; for (let t = floor - ph - 0.12 * sh; t > 56; t -= 0.12 * sh) tops.push(t);
+  // The strip (a bird's-eye panel) may span the width, so the first free place can be above it.
+  let top = tops.find(t => !busy(t));
+  if (top == null && strip) top = Math.max(56, strip.y - ph - 12);
+  btn.style.bottom = 'auto'; btn.style.top = Math.max(8, top ?? tops[0]) + 'px';
 }
 
 async function openForkMenu() {
@@ -304,7 +346,7 @@ async function openForkMenu() {
   closeForkMenu();
   const items = forkItems(), host = $('forkMenu'), clip = state.clip;
   $('forkOver').hidden = false; $('forkBtn').setAttribute('aria-expanded', 'true');
-  const opts = {clipId: clip.id, info: state.info, plateUrl: `/api/plate?clip=${encodeURIComponent(clip.id)}`, realPath: stage.data.fitPath, active: state.fork?.label || 'Reality', onPick};
+  const opts = {question: state.qTitle, clipId: clip.id, info: state.info, plateUrl: `/api/plate?clip=${encodeURIComponent(clip.id)}`, realPath: stage.data.fitPath, active: state.fork?.label || 'Reality', onPick};
   const gone = () => state.clip !== clip || $('forkOver').hidden;
   try {
     const {renderForkMenu} = await import('./forkmenu.js');
@@ -335,6 +377,8 @@ function onPick(item) {
   if (item.real) goReality(); else fork(item);
 }
 $('forkBtn').onclick = () => $('forkOver').hidden ? openForkMenu() : closeForkMenu();
+// The same invitation as a button inside the lab's last message (director.js revealForks).
+$('steps').addEventListener('click', e => { if (e.target.closest('[data-open-forks]')) openForkMenu(); });
 $('forkClose').onclick = () => { closeForkMenu(); $('forkBtn').focus(); };
 
 // The in-frame bar while a fork plays: its name, the way back to the footage, save and repaint.
@@ -348,14 +392,14 @@ function resetFork() {
   $('forkBtn').hidden = true; $('crossHint').hidden = true;
 }
 function goReality() {
-  stage.setFork(null); state.fork = null; state.lastFork = null; hideBar(); $('stageBadge').hidden = true; plot(stage.frame);
-  nb.user('Reality'); nb.msg('lab', 'Back to the footage as it was filmed.', {done: true});
+  stage.setFork(null); state.fork = null; state.lastFork = null; hideBar(); $('stageBadge').hidden = true; plot(stage.frame); placeForkBtn();
+  nb.user('Show it as filmed'); nb.msg('lab', 'Back to the footage as it was filmed.', {done: true});
 }
 $('realityBtn').onclick = () => { if (!director.playing) goReality(); };
 
 async function fork(f, moved = false) {
   if (director.playing) return;
-  nb.user(moved ? `${f.label} (crossing moved)` : f.label);
+  nb.user(moved ? `${whatIf(f)} (crossing moved)` : whatIf(f));
   if (f.vehicle) state.lastFork = {f};
   showBar(f.label);
   const clip = state.clip, id = encodeURIComponent(clip.id);
@@ -514,8 +558,8 @@ const sizeStage = () => {
   if (matchMedia('(max-width: 980px)').matches) return $('stage').style.removeProperty('--stage-max');
   $('stage').style.setProperty('--stage-max', Math.max(200, col.clientHeight - document.querySelector('.transport').offsetHeight - 170 - 20) + 'px');
 };
-addEventListener('resize', () => { sizeStage(); state.fit && plot(stage.frame); });
-new ResizeObserver(() => { sizeStage(); state.fit && plot(stage.frame); }).observe(document.querySelector('.stage-col'));
+addEventListener('resize', () => { sizeStage(); placeForkBtn(); state.fit && plot(stage.frame); });
+new ResizeObserver(() => { sizeStage(); placeForkBtn(); state.fit && plot(stage.frame); }).observe(document.querySelector('.stage-col'));
 sizeStage();
 loadClips();
 // After the hackathon's judging the server stops paid calls; say so once, where it is seen.

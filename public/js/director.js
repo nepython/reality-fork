@@ -332,7 +332,7 @@ class Run {
     await this.alive();
   }
   async revealForks(instant) {
-    this.nb.msg('lab', 'Now fork reality: press the shimmering Reality Fork button on the video, pick a world, and the clip replays with the physics changed.', {step: ['The lab is inviting you to fork reality', 'The lab invited you to fork reality']});
+    this.nb.msg('lab', 'Now fork reality: press <button type="button" class="fork-pill inline" data-open-forks>Reality Fork</button> here, or on the video, pick a change, and the same clip replays with the physics changed.', {step: ['The lab is inviting you to fork reality', 'The lab invited you to fork reality']});
     this.hooks.reveal(instant);
     if (!instant) await this.sleep(500);
   }

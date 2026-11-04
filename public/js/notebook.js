@@ -53,7 +53,7 @@ export class Notebook {
   // What a run does. It is the chat's first message while the chat is empty and, from the first question on, lives
   // behind the info button (app.js shows the same text in a popover).
   static introHtml() {
-    return `Ask about the motion in the clip, then press <b>Run the lab</b>. Here is what happens:
+    return `Pick a sample clip and its own question is sent at once; or type your own question and press <b>Run the lab</b>. Here is what happens:
       <ol class="intro">
         <li><span class="chip spark">Muse Spark</span> watches your clip and plans the experiment: what moves, what sets the scale.</li>
         <li><span class="chip sam">SAM 3.1</span> follows the object through every frame, pixel-accurate, giving its path to a fraction of a pixel.</li>

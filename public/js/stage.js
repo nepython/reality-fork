@@ -2,6 +2,8 @@
 // frame (SAM's mask filled from the clean plate) and redrawn on the path the changed physics gives it.
 import {pedestrian, PEDESTRIAN_M} from './pedestrian.js';
 import {stripLayout, drawStrip} from './strip.js';
+import {Fx} from './fx.js';
+import {sfx} from './sfx.js';
 
 const COL = {measured: '#ffd60a', fit: '#00c8ff', fork: '#ff40a0', mask: 'rgba(124, 92, 255, 0.38)', sam: '#7c5cff', samFill: 'rgba(124, 92, 255, 0.42)'};
 
@@ -16,8 +18,17 @@ export class Stage {
     this.scene = null;      // a director's act: (stage, frame) draws instead of the usual overlay (see director.js)
     this.last = document.createElement('canvas');
     this.loop = this.loop.bind(this);
+    // The effects (fx.js) and their sounds. `onEffect(name, params)` is the hook the stage calls at each moment (an impact, a
+    // landing, brakes); by default it plays the synthesised sound (sfx.js, which stays silent until a gesture, when muted, under
+    // reduced motion and in automated browsers). Replace it to route the cues elsewhere.
+    this.fx = new Fx(this); this.ft = 0; this.onEffect = (name, params) => sfx.play(name, params);
     const tick = (now, meta) => {
-      if (!this.freeRun) this.draw(Math.round(meta.mediaTime * this.data?.fps || 0));
+      if (!this.freeRun) {
+        const f = (meta.mediaTime * this.data?.fps) || 0;
+        // Slow motion around an impact: the video itself slows down; the frame counter stays the footage's.
+        if (this.forking && this.fx.kind) { const r = this.fx.rate(f); if (Math.abs(video.playbackRate - r) > 0.01) video.playbackRate = r; }
+        this.draw(Math.round(f), f); this.pump();
+      }
       video.requestVideoFrameCallback(tick);
     };
     if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(tick);
@@ -40,12 +51,12 @@ export class Stage {
   }
 
   setAnalysis(a) { Object.assign(this.data, a); this.redraw(); }
-  redraw() { this.draw(this.frame); }
+  redraw() { this.draw(this.frame, this.ft); }
 
   // ---- fork playback -------------------------------------------------------------------------------------------
   // `summary` (optional) is the fork's sentence for the result chip; without it the chip reads the page's own summary line.
   setFork(path, {label, start, end, baseline, floor, hazard, summary} = {}) {
-    this.hazard = hazard || null; this.strip = null; this.strobe = null;
+    this.hazard = hazard || null; this.strip = null; this.strobe = null; this.eraseCache = null;
     const page = document.getElementById('forkSummary')?.textContent;
     this.summary = summary ?? (page && !/^Muse Image/.test(page) ? page : '');
     this.data.forkPath = path;
@@ -55,6 +66,11 @@ export class Stage {
     this.forking = !!path;
     this.forkLabel = label;
     this.forkEnd = end ?? (path ? path.at(-1)[0] : 0);
+    this.video.playbackRate = 1;
+    this.fx.setup();
+    // A car's story goes on after its event (the throw and slide, the sparkle): play on long enough to see it out.
+    if (this.fx.kind === 'hit') this.forkEnd = Math.max(this.forkEnd, Math.ceil(this.fx.Fc + (this.fx.T1 + this.fx.T2 + 0.9) * this.data.fps));
+    if (this.fx.kind === 'stop') this.forkEnd = Math.max(this.forkEnd, Math.ceil(this.fx.Fs + 2.2 * this.data.fps));
     this.video.style.visibility = this.forking ? 'hidden' : 'visible';
     this.stopFreeRun();
     const from = (start ?? path?.[0]?.[0] ?? 0) - Math.round(this.data.fps * 0.4);
@@ -75,7 +91,7 @@ export class Stage {
   startPreroll(from) {
     this.freeRun = true; this.pre = true;
     this.video.pause(); this.video.currentTime = 0.5 / this.data.fps;
-    this.t0 = performance.now(); this.f0 = from;
+    this.t0 = performance.now(); this.f0 = from; this.fAcc = from; this.tPrev = null;
     this.draw(from);
     requestAnimationFrame(this.loop);
   }
@@ -84,23 +100,43 @@ export class Stage {
     // The forked object can outlive the footage (a Moon fall lasts ~2.5x longer): hold the last frame and keep going.
     this.freeRun = true;
     this.t0 = performance.now();
-    this.f0 = this.data.frames - 1;
+    this.f0 = this.data.frames - 1; this.fAcc = this.f0; this.tPrev = null;
     requestAnimationFrame(this.loop);
   }
   stopFreeRun() { this.freeRun = false; this.pre = false; }
   loop(now) {
     if (!this.freeRun) return;
-    const f = this.f0 + Math.floor((now - this.t0) / 1000 * this.data.fps);
+    // An accumulated clock (not one from the start) so a changing playback rate (slow motion at an impact) stays continuous.
+    const dt = this.tPrev == null ? 0 : Math.min(0.1, (now - this.tPrev) / 1000); this.tPrev = now;
+    this.fAcc += dt * this.data.fps * (this.fx.kind ? this.fx.rate(this.fAcc) : 1);
+    const f = Math.floor(this.fAcc);
     if (this.pre && f >= 0) return this.seek(0, true);   // the footage takes over from its first frame
-    this.draw(Math.min(f, this.forkEnd));
+    this.draw(Math.min(f, this.forkEnd), Math.min(this.fAcc, this.forkEnd));
     if (f < this.forkEnd) requestAnimationFrame(this.loop); else this.freeRun = false;
   }
 
+  // Between two video frames the effects keep moving: a 30 fps clip's dust, or any clip in slow motion, would step at the
+  // footage's rate. While playing, redraw at the display's rate with the time extrapolated from the last real frame.
+  pump() {
+    if (this.pumping) return; this.pumping = true;
+    const step = () => {
+      if (!this.forking || !this.fx.kind) { this.pumping = false; return; }
+      const playing = !this.freeRun && !this.video.paused && !this.video.ended;   // a free run redraws every display frame itself
+      if (playing && this.ftAt && (this.fx.rate(this.ft) < 1 || this.data.fps < 50)) {
+        const rate = this.video.playbackRate, adv = (performance.now() - this.ftAt) / 1000 * this.data.fps * rate;
+        if (adv > 0.05) this.draw(this.frame, Math.min(this.ftBase + adv, this.frame + 1.2), true);
+      }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   // ---- drawing -------------------------------------------------------------------------------------------------
-  draw(frame) {
+  draw(frame, ft, extrapolated = false) {
     const d = this.data;
     if (!d) return;
-    this.frame = frame;
+    this.frame = frame; this.ft = ft ?? frame;
+    if (!extrapolated) { this.ftBase = this.ft; this.ftAt = performance.now(); }
     const ctx = this.ctx, W = d.width, H = d.height;
     ctx.clearRect(0, 0, W, H);
     if (this.scene) this.scene(this, frame);
@@ -142,11 +178,12 @@ export class Stage {
   drawFork(frame) {
     const d = this.data, ctx = this.ctx, W = d.width, H = d.height;
     const inClip = frame <= d.frames - 1;
-    const cam = this.camera(frame), pulled = cam.s < 0.999;
+    const cam = this.camera(frame), pulled = cam.s < 0.999, sk = this.fx.shake();   // sk: the picture's shake at an impact, if any
+    if (sk) ctx.setTransform(...sk);
     if (pulled) {
       // Pulled back, the footage is a lit window in a dark metre grid: the void, then a soft shadow the footage casts on it.
       this.drawVoid(cam);
-      ctx.setTransform(cam.s, 0, 0, cam.s, W / 2 - cam.s * cam.cx, H / 2 - cam.s * cam.cy);
+      ctx.setTransform(...(sk || [1, 0, 0, 1, 0, 0])); ctx.transform(cam.s, 0, 0, cam.s, W / 2 - cam.s * cam.cx, H / 2 - cam.s * cam.cy);
       ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 28; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore();
     }
     const live = inClip ? this.video : this.last;
@@ -162,19 +199,23 @@ export class Stage {
       if (d.plateSteady === false) this.drawMask(Math.min(frame, d.frames - 1), 'rgba(8, 10, 20, 0.5)', 3);
       else this.eraseObject(Math.min(frame, d.frames - 1), live);
     }
+    if (frame >= start || this.fx.kind === 'launch') this.fx.under(ctx);
     // The real path, a faint dotted ghost; the fork's own path so far, and (when it is not a car at a crossing) the
     // stroboscopic copies of the cut-out along it.
     const real = d.basePath || d.fitPath;
     if (this.show.path && real) this.dotted(real, 'rgba(255,255,255,0.5)');
     // A car that hits the person stays where it hit (the path goes on past the crossing and out of shot, which left the
     // person alone in the final frame with nothing to explain the red callout).
-    const pf = this.hazard?.outcome?.kind === 'hits' ? Math.min(frame, this.hazard.event.frame) : frame;
-    const p = d.forkPath.find(q => q[0] === pf) || (pf > this.forkEnd ? d.forkPath.at(-1) : null);
+    // (The car's place after the touch is fx.carPos: it brakes hard and stops a few metres on instead of freezing.)
+    const pf = this.fx.kind === 'hit' ? Math.min(frame, this.fx.Fc) : frame;
+    const car = this.fx.kind === 'hit' || this.fx.kind === 'stop';
+    const p = car ? (frame >= d.forkPath[0][0] ? this.fx.carPos(frame) : null) : d.forkPath.find(q => q[0] === pf) || (pf > this.forkEnd ? d.forkPath.at(-1) : null);
     this.gapText = '';
     this.curve(d.forkPath.filter(q => q[0] <= pf), COL.fork, 2.5);
     if (!this.hazard && frame >= start) this.strobeCopies(frame);
     if (p && frame >= start) {
-      this.sprite(p[1], p[2], {ground: !!this.hazard});
+      this.sprite(p[1], p[2], {ground: !!this.hazard, pitch: this.fx.carPitch(), dir: this.fx.dir, deform: this.fx.deform()});
+      this.fx.over(ctx);
       // Pulled back, a ball is a few pixels across: ring it so the eye can follow it.
       if (cam.s < 0.8) { ctx.strokeStyle = COL.fork; ctx.lineWidth = 2.5 / cam.s; ctx.beginPath(); ctx.arc(p[1], p[2], 14 / cam.s, 0, 7); ctx.stroke(); }
       if (d.plateSteady === false) this.gapLines(frame, p);
@@ -185,10 +226,12 @@ export class Stage {
       ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5 / cam.s; ctx.setLineDash([]); ctx.strokeRect(0, 0, W, H);
       ctx.font = `700 ${11 / cam.s}px ui-monospace, monospace`; ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.textBaseline = 'bottom'; ctx.textAlign = 'left';
       ctx.fillText('FOOTAGE', 2 / cam.s, -5 / cam.s);
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.fx.ambient(ctx);
     if (this.hazard) this.drawBirdsEye(frame);
     else this.drawChip(frame, start);
+    this.fx.hud(ctx); this.fx.flash(ctx); this.fx.events();
     if (this.badge) {
       this.badge.hidden = false;
       const t = Math.max(0, (frame - start) / d.fps);
@@ -335,9 +378,11 @@ export class Stage {
     if (out) {
       const p = h ? Math.min(1, tOut / 2.2) : 0;
       ctx.globalAlpha = h ? Math.min(1, tOut / 0.25 + 0.001) : 0.6;
-      pedestrian(ctx, x, ground + (0.2 - 0.34 * p) * tall, tall, h ? Math.max(0, tOut) : 0.3);
+      // Hit: from the touch the person is the knocked silhouette (fx.js); stop short: they glance at the car, then walk on.
+      if (!this.fx.drawKnocked(ctx)) pedestrian(ctx, x, ground + (0.2 - 0.34 * (p + this.fx.stepOn())) * tall, tall, h ? Math.max(0, tOut) : 0.3, this.fx.personPose());
       ctx.globalAlpha = 1;
     }
+    this.fx.impact(ctx);
     this.label(x, Math.max(18, top - 14 * k), h ? 'crossing' : 'crossing · click the road to move', '#ffd60a');
     const ev = h?.event;
     if (ev && frame >= ev.frame) {
@@ -347,22 +392,22 @@ export class Stage {
         const dir = Math.sign(x - ev.x_px) || 1, bx = this.spriteBox(), x0 = ev.x_px + (dir > 0 ? bx.r : bx.l), yb = ground + 0.18 * tall;
         ctx.strokeStyle = col; ctx.lineWidth = 4 * k; ctx.beginPath(); ctx.moveTo(x0, yb); ctx.lineTo(x, yb);
         ctx.moveTo(x0, yb - 8 * k); ctx.lineTo(x0, yb + 8 * k); ctx.moveTo(x, yb - 8 * k); ctx.lineTo(x, yb + 8 * k); ctx.stroke();
-      }
-      if (hit) {   // the impact: a red ring spreading from the person, for the first second
-        const a = Math.max(0, 1 - (frame - ev.frame) / d.fps), r = (0.4 + 1.1 * (1 - a)) * tall;
-        ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 5 * k; ctx.beginPath(); ctx.arc(x, ground - 0.5 * tall, r, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+        this.fx.stopFx(ctx, x0, x, yb);
       }
       // Beside the strip, not under it: just below a strip at the top, just above one at the bottom.
       const st = this.strip?.layout, cy = !st ? Math.max(40 * k, top - 66 * k) : st.atTop ? st.y + st.h + 30 * k : st.y - 30 * k;
-      this.callout(Math.min(Math.max(x, 140 * k), d.width - 140 * k), cy, h.outcome.text, col);
+      const c = this.fx.callout(h.outcome.text);
+      this.callout(Math.min(Math.max(x, 140 * k), d.width - 140 * k), cy, c.text, col, {pop: c.pop, fit: h.outcome.text});
     }
     ctx.restore();
   }
 
-  callout(x, y, text, color) {
+  // `fit` is the finished text: the box is sized for it, so a number counting up does not make the box jump; `pop` a landing bounce.
+  callout(x, y, text, color, {pop = 1, fit = text} = {}) {
     const ctx = this.ctx, k = this.scale() * 1.5;
     ctx.save(); ctx.font = `700 ${16 * k}px system-ui, sans-serif`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-    const w = ctx.measureText(text).width + 24 * k, hgt = 34 * k;
+    const w = ctx.measureText(fit).width + 24 * k, hgt = 34 * k;
+    if (pop !== 1) { ctx.translate(x, y); ctx.scale(pop, pop); ctx.translate(-x, -y); }
     ctx.fillStyle = color; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10;
     ctx.beginPath(); ctx.roundRect(x - w / 2, y - hgt / 2, w, hgt, 8 * k); ctx.fill();
     ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.fillText(text, x, y + 1);
@@ -410,6 +455,9 @@ export class Stage {
   eraseObject(frame, live = this.video) {
     const d = this.data, m = this.maskCanvas(frame, 0);
     if (!m || !d.plate) return;
+    // Between two footage frames the effects redraw (see pump): the patch for a frame is the same, so it is kept.
+    const ec = this.eraseCache;
+    if (ec && ec.frame === frame && ec.live === live && ec.plate === d.plate) return void this.ctx.drawImage(ec.patch, ec.x, ec.y);
     const W = d.width, H = d.height, bw = m.canvas.width, bh = m.canvas.height, R = 7, RING = 9, down = Math.round(Math.min(14, 0.07 * bh)), M = R + RING + 3;
     const rx = Math.max(0, m.x - M), ry = Math.max(0, m.y - M), rw = Math.min(W, m.x + bw + M) - rx, rh = Math.min(H, m.y + bh + M + down) - ry;
     if (rw < 2 || rh < 2) return;
@@ -459,6 +507,7 @@ export class Stage {
       out.data[i + 3] = a;
     }
     const patch = mk(); patch.getContext('2d').putImageData(out, 0, 0);
+    this.eraseCache = {frame, live, plate: d.plate, patch, x: rx, y: ry};
     this.ctx.drawImage(patch, rx, ry);
   }
 
@@ -532,7 +581,7 @@ export class Stage {
     ctx.fillStyle = '#fff'; ctx.fillText(text, x0 + 7 * k, y0 + h / 2 + 1); ctx.restore();
   }
 
-  sprite(x, y, {ground = false} = {}) {
+  sprite(x, y, {ground = false, pitch = 0, dir = 1, deform = null} = {}) {
     const s = this.data.sprite, m = this.data.spriteMeta;
     // The fit may follow the object's top or bottom edge (see fit.point); anchor the cut-out at the same point.
     const point = this.data.point, ax = point === 'top' ? m?.tx : point === 'bottom' ? m?.bx : m?.cx, ay = point === 'top' ? m?.ty : point === 'bottom' ? m?.by : m?.cy;
@@ -547,7 +596,13 @@ export class Stage {
       if (this.data.plateSteady === false && this.forking) { ctx.shadowColor = COL.fork; ctx.shadowBlur = 16 * this.scale(); }
       // Pulled back far, a small object (a ball) would be a speck: it is drawn up to ~16 screen px across, about its anchor.
       const cs = this.forking && this.cam ? this.cam.s : 1, up = Math.max(1, 16 / (Math.max(m.width, m.height) * cs));
-      ctx.translate(x, y); ctx.scale(up, up); ctx.drawImage(s, -(ax - m.left), -(ay - m.top)); ctx.restore();
+      ctx.translate(x, y); ctx.scale(up, up);
+      // The car's nose dips (rotation about its rear tyres) and a ball squashes (scale about its base): both are visual
+      // reactions drawn on the cut-out; the position it is drawn at is the physics'.
+      const ox = -(ax - m.left), oy = -(ay - m.top);
+      if (pitch) { const px = ox + m.width * (dir > 0 ? 0.2 : 0.8), py = oy + m.height * 0.95; ctx.translate(px, py); ctx.rotate(pitch); ctx.translate(-px, -py); }
+      if (deform) { const px = ox + m.width / 2, py = oy + m.height; ctx.translate(px, py); ctx.scale(deform.sx, deform.sy); ctx.translate(-px, -py); }
+      ctx.drawImage(s, ox, oy); ctx.restore();
     }
     else { this.ctx.fillStyle = COL.fork; this.ctx.beginPath(); this.ctx.arc(x, y, this.radius(), 0, 7); this.ctx.fill(); }
   }

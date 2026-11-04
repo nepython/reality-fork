@@ -1,5 +1,6 @@
 // The fork menu: a grid of cards over the video frame, one per fork, each previewing the forked path on the clip's own plate.
 // Every number on a card comes from the /api/fork response (free: no model call); nothing is invented here.
+import {whatIf} from './whatif.js';
 let sheet = false;
 const cache = new Map(); // clip + overrides -> response promise, so reopening the menu is instant
 let uid = 0;
@@ -153,13 +154,14 @@ function art(kind, it, res, p) {
 }
 
 // ---- the menu ---------------------------------------------------------------------------------------------------------------
-export function renderForkMenu(el, items, {clipId, info, plateUrl, realPath, onPick, active} = {}) {
+export function renderForkMenu(el, items, {clipId, info, plateUrl, realPath, onPick, active, question} = {}) {
   if (!sheet) { sheet = true; const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('../fork.css', import.meta.url).href; document.head.append(l); }
   items = pick(items || [], el.clientWidth >= 1000 ? 8 : 6);
   const W = info?.width || 1280, H = info?.height || 720, pre = 'fm' + (++uid) + '_';
   el.classList.add('fm'); el.innerHTML = '';
   const head = document.createElement('div'); head.className = 'fm-head';
-  head.innerHTML = '<h2>Fork reality: <em>what if…</em></h2><p>Change the physics, and the filmed object is re-simulated under the new rules and replayed in your footage. <span>Previews are computed live, not generated.</span></p>';
+  // The header repeats the context for someone who has forgotten the first question.
+  head.innerHTML = `<h2><em>What if…</em></h2><p>${question ? `You asked: <b class="fm-q">${esc(question)}</b>. ` : ''}Pick a change and the same footage is replayed with it. <span>The object is re-simulated under the new rules, and the previews are computed live, not generated.</span></p>`;
   const grid = document.createElement('div'); grid.className = 'fm-grid'; grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', 'Forks of this clip');
   el.append(head, grid);
   let cur = active ?? null, dead = false, focus = 0;
@@ -169,11 +171,11 @@ export function renderForkMenu(el, items, {clipId, info, plateUrl, realPath, onP
     if (it.agent) b.dataset.agent = '1';
     b.tabIndex = i === 0 ? 0 : -1;
     b.innerHTML = `<span class="fm-pv"><span class="fm-skel"></span><span class="fm-art"></span>${it.agent ? '<span class="fm-badge"><i></i>Muse Spark<span class="fm-bs">&nbsp;suggests</span></span>' : ''}<span class="fm-g"></span></span>
-      <span class="fm-tx"><b class="fm-name">${esc(it.label)}</b><span class="fm-big"></span><span class="fm-small"></span></span>`;
+      <span class="fm-tx"><b class="fm-name">${esc(whatIf(it))}</b><span class="fm-big"></span><span class="fm-small"></span></span>`;
     b.querySelector('.fm-art').innerHTML = art(kind, it, null, pre + i);
     const gv = it.g ?? it.overrides?.g, ev = it.e ?? it.overrides?.e;
     b.querySelector('.fm-g').textContent = it.real ? 'as filmed' : gv != null ? `g = ${+(+gv).toFixed(2)} m/s²` : (it.drag ?? it.overrides?.drag) === 'none' ? 'no drag' : ev != null && ev >= 0 ? `bounce ${ev}` : '';
-    b.setAttribute('aria-label', `${it.label}. ${it.why || ''}`.trim());
+    b.setAttribute('aria-label', `${whatIf(it)} ${it.why || ''}`.trim());
     b.onclick = () => { setActive(it.label); onPick?.(it); };
     grid.append(b);
     return {b, it, kind, data: null};
@@ -217,7 +219,7 @@ export function renderForkMenu(el, items, {clipId, info, plateUrl, realPath, onP
     b.querySelector('.fm-art').innerHTML = art(c.kind, it, res, pre + i);
     // The tooltip and the accessible name carry the fork's reason and its outcome, plus any warning the engine raised.
     const warn = (res.warnings || []).join(' ');
-    const text = [it.label + '.', it.why, h.big + (h.small && !res.error ? ' ' + h.small : '') + '.', res.error ? '' : res.summary, warn].filter(Boolean).join(' ');
+    const text = [whatIf(it), it.agent && it.label !== whatIf(it) ? `Muse Spark's suggestion: ${it.label}.` : '', it.why, h.big + (h.small && !res.error ? ' ' + h.small : '') + '.', res.error ? '' : res.summary, warn].filter(Boolean).join(' ');
     b.title = text; b.setAttribute('aria-label', text);
     if (warn) { const w = document.createElement('span'); w.className = 'fm-warn'; w.textContent = '!'; w.title = warn; pv.append(w); }
     preview(pv, c.data.pv);

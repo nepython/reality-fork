@@ -42,7 +42,7 @@
         <div class="cross-hint" id="crossHint" hidden>Click the road to move the crossing</div>
         <div class="forkover" id="forkOver" role="dialog" aria-label="Fork reality" hidden>
           <div class="forkover-head">
-            <span class="label">Reality Fork</span><span class="muted">Replay this clip under other physics</span>
+            <span class="label">Reality Fork</span><span class="muted">Replay this clip with a change</span>
             <button type="button" id="forkClose" class="icon small" aria-label="Close the fork options" data-tip="Close (Esc)">&times;</button>
           </div>
           <div id="forkMenu" class="forkmenu-host"></div>
@@ -55,7 +55,7 @@
           <label class="restyle" data-tip="Muse Image repaints the footage as the Moon, Mars or Jupiter for gravity forks"><input type="checkbox" id="restyle"> Repaint the world with Muse Image</label>
         </div>
       </div>
-      <button type="button" id="forkBtn" class="fork-pill" hidden aria-expanded="false" aria-controls="forkOver" data-tip="Click to view: replay this clip under other physics" data-tip-side="right">Reality Fork</button>
+      <button type="button" id="forkBtn" class="fork-pill" hidden aria-expanded="false" aria-controls="forkOver" data-tip="What if…? Pick a change (another planet, no air, a faster car) and this footage is replayed with it" data-tip-side="left">Reality Fork</button>
     </div>
     <div class="transport">
       <button id="play" class="icon" aria-label="Play" data-tip="Play / pause">▶</button>
@@ -76,17 +76,18 @@
 
   <aside class="chat" id="chat" aria-label="Lab chat">
     <div class="chat-head">
+      <span id="chatQ" class="chat-q muted" data-tip-side="bottom">Pick a clip to begin</span>
       <span class="chat-title">Lab chat
         <button type="button" id="infoBtn" class="info-btn" aria-label="How the lab works" aria-expanded="false" aria-controls="infoPop" data-tip="How the lab works">i</button>
       </span>
-      <span id="nbState" class="muted"></span>
+      <span id="nbState" hidden></span>
     </div>
     <div class="info-pop" id="infoPop" role="dialog" aria-label="How the lab works" hidden></div>
     <ol id="steps" class="msgs" aria-live="polite" aria-relevant="additions"></ol>
     <div class="composer-wrap">
       <button type="button" id="skip" class="skip" hidden data-tip="Jump to the finished results">Skip to results</button>
       <form id="ask" class="ask">
-        <input id="question" type="text" placeholder="Ask any physics-related question about the clip" autocomplete="off" aria-label="Your question">
+        <input id="question" type="text" placeholder="Ask a physics question about the clip" autocomplete="off" aria-label="Your question">
         <button type="button" id="mic" class="icon mic" aria-label="Ask by voice" aria-pressed="false" data-tip="Ask by voice (Muse Voice Transcribe)">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6v12"/><path d="M12 3v18"/><path d="M16 7v10"/><path d="M20 10v4"/></svg>
         </button>

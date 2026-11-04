@@ -33,6 +33,7 @@
    }
   ],
   "question": "How fast is this car going, in km/h?",
+  "chat_title": "How fast is this car going?",
   "notes": "Source: a 131 s, 4K, 59.94 fps tripod-mounted compilation of an intersection; this is the first segment (0-59 s), one fixed shot (pole, signal head and wires stay put; at most a few px of drift). Not a school street: a four-lane signalised junction in the US, so the vehicle is turning or pulling away on a green and is probably slow (by eye roughly 15-25 km/h; this is NOT a measurement). A '30' sign is visible beyond the pole (probably 30 mph; not verified). Timeline: the SUV's front appears at the left edge at about 0.55 s (frame ~33), the whole car is in shot from about 1.4 s, it moves left to right, passes behind the grey signal pole (x about 1000-1060 px) at about 3.0-3.6 s and is gone by about 3.8 s (frame ~228); a dark SUV enters at the left edge at about 4.0 s, so it is not in the trimmed clip except for a sliver at the very end. Length in frame: about 610 px (bumper to bumper) at 2.4 s, shrinking to about 545 px by 3.0 s because the car recedes slightly (the road runs away to the right), so the scale is NOT constant: perspective is oblique, not purely side-on, and the car is rotated slightly toward the camera at the start. Scale references: the SUV (about 4.9 m, estimate); the white zebra crosswalk bars behind it (US ladder bars, nominal 0.3-0.6 m wide, spacing 0.6-1.2 m; unverified); the 30 sign. The frame has thin black letterbox bars at top and bottom (about 22 px). Plates: the rear plate faces the camera at the start but is about 20 px wide and not legible; the windows are tinted and the driver is not identifiable. No people are visible in the clip. Other cars in the distance are tiny. Licence: CC BY 4.0, so keep the credit."
  },
  {
@@ -74,6 +75,7 @@
    "source": "NASA Moon Fact Sheet: 1.62 m/s2"
   },
   "question": "John Young jumps and salutes. What is the gravity on the Moon?",
+  "chat_title": "What is the Moon's gravity?",
   "notes": "Apollo 16 EVA-1, 21 Apr 1972, rover TV camera parked near the flag; Young is the large figure in front (about 270 px tall in the 704x480 clip, seen from behind and slightly side-on), Duke is the small figure by the flag. Camera still throughout the trimmed clip (flag and horizon fixed). Take-off about frame 29 (0.97 s), peak about frame 49, landing about frame 69 (2.3 s), so roughly 1.3 s in the air; clip runs 0-3.37 s (101 frames at 29.97 fps). Original is 352x240 at 29.97 fps, upscaled 2x by us. No exact duplicate frames in the trimmed range, but the frame differences dip every fifth frame, a sign the TV copy was converted from a 24 fps source (film or a 24-to-30 conversion): effective sampling may be about 24 fps with blended frames, so expect timing jitter of up to one frame. Back-lit by the sun: the astronaut's legs can be dark. Young also waves/salutes with his right arm during the jump."
  },
  {
@@ -119,6 +121,7 @@
    "source": "NASA: 8.8 Mlbf (39.1 MN) liftoff thrust, 5.75 Mlb (2.61 Mkg) liftoff mass; thrust/weight 1.53, so a = 0.53 g = 5.2 m/s²"
   },
   "question": "How hard does the rocket accelerate off the pad?",
+  "chat_title": "How hard does the rocket accelerate?",
   "notes": "Fixed pad camera at night. The base is below the frame and the lower rocket vanishes into exhaust glare, so the nose (top edge) is the clean point to track. Expected values are approximate: thrust ramps at ignition."
  },
  {
@@ -162,6 +165,7 @@
    "source": "free flight in orbit, apparent g ~ 0"
   },
   "notes": "Wide static shot of the Columbus module. The globe (~0.3-0.4 m, size undocumented) is pushed and caught by the astronaut, so only the free-flight stretches between contacts (first ~2 s, then around 3-4 s) are constant velocity. Ball is ~40-60 px wide. Wider-than-ideal background clutter.",
-  "question": "Is anything accelerating the globe?"
+  "question": "Is anything accelerating the globe?",
+  "chat_title": "Is anything accelerating the globe?"
  }
 ]
