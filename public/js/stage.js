@@ -41,7 +41,7 @@ export class Stage {
 
   // ---- fork playback -------------------------------------------------------------------------------------------
   setFork(path, {label, start, end, baseline, floor, hazard} = {}) {
-    this.hazard = hazard || null;
+    this.hazard = hazard || null; this.followKey = null;
     this.data.forkPath = path;
     this.data.floorPx = floor ?? null;
     this.data.basePath = baseline || null;
@@ -51,7 +51,10 @@ export class Stage {
     this.forkEnd = end ?? (path ? path.at(-1)[0] : 0);
     this.video.style.visibility = this.forking ? 'hidden' : 'visible';
     this.stopFreeRun();
-    if (this.forking) this.seek(Math.max(0, (start ?? path[0][0]) - Math.round(this.data.fps * 0.4)), true);
+    const from = (start ?? path[0][0]) - Math.round(this.data.fps * 0.4);
+    // A story that begins before the footage (someone steps out while the car is still off-shot) pre-rolls on the first frame.
+    if (this.forking && from < 0) this.startPreroll(from);
+    else if (this.forking) this.seek(from, true);
     else this.redraw();
   }
 
@@ -63,6 +66,14 @@ export class Stage {
     if (play) this.video.play().catch(() => {});
   }
 
+  startPreroll(from) {
+    this.freeRun = true; this.pre = true;
+    this.video.pause(); this.video.currentTime = 0.5 / this.data.fps;
+    this.t0 = performance.now(); this.f0 = from;
+    this.draw(from);
+    requestAnimationFrame(this.loop);
+  }
+
   startFreeRun() {
     // The forked object can outlive the footage (a Moon fall lasts ~2.5x longer): hold the last frame and keep going.
     this.freeRun = true;
@@ -70,10 +81,11 @@ export class Stage {
     this.f0 = this.data.frames - 1;
     requestAnimationFrame(this.loop);
   }
-  stopFreeRun() { this.freeRun = false; }
+  stopFreeRun() { this.freeRun = false; this.pre = false; }
   loop(now) {
     if (!this.freeRun) return;
     const f = this.f0 + Math.floor((now - this.t0) / 1000 * this.data.fps);
+    if (this.pre && f >= 0) return this.seek(0, true);   // the footage takes over from its first frame
     this.draw(Math.min(f, this.forkEnd));
     if (f < this.forkEnd) requestAnimationFrame(this.loop); else this.freeRun = false;
   }
@@ -128,6 +140,7 @@ export class Stage {
     if (cam.s < 0.999) {
       ctx.fillStyle = '#070910'; ctx.fillRect(0, 0, d.width, d.height);
       ctx.setTransform(cam.s, 0, 0, cam.s, d.width / 2 - cam.s * cam.cx, d.height / 2 - cam.s * cam.cy);
+      if (this.followed()) this.drawRoad(cam);
       this.grid(cam);
     }
     if (d.world) ctx.drawImage(d.world, 0, 0, d.width, d.height);
@@ -166,6 +179,107 @@ export class Stage {
     }
   }
 
+  // A braking fork on a vehicle run is shown by a following camera and a continued road (see followCamera, drawRoad).
+  followed() { const d = this.data; return !!(this.forking && this.hazard && d.road && d.plate); }
+
+  // The following camera is a pure function of the frame (scrubbing and replay agree): the zoom is fixed per fork, never
+  // below 55% so the footage stays over half the stage; the centre glides from the car to a soft-clamped view of the
+  // crossing over the first 2.5 s (so the person's step-out and the crossing are in view), follows the car in, and after
+  // the stop or impact eases to the midpoint of car and crossing and holds there on the callout.
+  followCamera(frame) {
+    const d = this.data, W = d.width, H = d.height, path = d.forkPath, h = this.hazard, fps = d.fps, f0 = path[0][0];
+    const key = path;
+    if (this.followKey !== key) {
+      const b = this.spriteBox(), carW = b.r - b.l, at0 = path[Math.max(0, Math.min(path.length - 1, h.step_out_frame - f0))];
+      const need = Math.abs(h.x_px - at0[1]) + carW, ev = path[Math.max(0, Math.min(path.length - 1, h.event.frame - f0))];
+      const end = Math.abs(h.x_px - ev[1]) + carW;
+      this.followKey = key; this.followS = Math.max(0.55, Math.min(1, W / (1.15 * Math.max(need, end))));
+    }
+    const s = this.followS;
+    if (s >= 0.999) return this.cam = {s: 1, cx: W / 2, cy: H / 2};
+    const sm = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+    const car = path[Math.max(0, Math.min(path.length - 1, frame - f0))], cross = h.x_px, evf = h.event.frame;
+    const evCar = path[Math.max(0, Math.min(path.length - 1, evf - f0))];
+    const L = 0.25 * W / s;
+    const lead = cross + L * Math.tanh((car[1] - cross) / L);
+    const w1 = sm((frame - f0 - 0.2 * fps) / (2.3 * fps)), w2 = sm((frame - evf) / (2 * fps));
+    const base = car[1] + (lead - car[1]) * w1;
+    const cx = base + ((evCar[1] + cross) / 2 - base) * w2;
+    const roadAt = d.road(cx), cy = (H / 2 + roadAt) / 2;
+    return this.cam = {s, cx, cy};
+  }
+
+  // The scene carried on past the footage's edges, so a car driving out of shot stays on its road: the plate's own edge
+  // strips are stretched outward (sky, trees, road and kerb stay continuous with the footage, as streaks), the colours
+  // just inside its letterbox fill the corners, and a light veil marks all of it as not filmed. The road's edges and
+  // centre line continue faintly on either side. (Flat sampled bands alone read as coloured blocks with a seam.)
+  drawRoad(cam) {
+    const m = this.roadModel(); if (!m) return;
+    const d = this.data, ctx = this.ctx, W = d.width, k = this.scale();
+    const vx0 = cam.cx - W / 2 / cam.s - 10, vx1 = cam.cx + W / 2 / cam.s + 10, vy0 = cam.cy - d.height / 2 / cam.s - 10, vy1 = cam.cy + d.height / 2 / cam.s + 10;
+    const P = d.plate, pw = P.naturalWidth || P.width, ph = P.naturalHeight || P.height, rx = pw / W, ry = ph / d.height;
+    const {t0, b0} = m, strip = (sx, sy, sw, sh, x, y, w, h) => w > 0 && h > 0 && ctx.drawImage(P, sx * rx, sy * ry, sw * rx, sh * ry, x, y, w, h);
+    ctx.save();
+    for (const [x0, x1, e] of [[vx0, 0, m.left], [W, vx1, m.right]]) {
+      if (x1 <= x0) continue;
+      ctx.fillStyle = e.above; ctx.fillRect(x0, vy0, x1 - x0, t0 - vy0);
+      ctx.fillStyle = e.below; ctx.fillRect(x0, b0, x1 - x0, vy1 - b0);
+      strip(e.x < W / 2 ? 1 : W - 7, t0, 6, b0 - t0, x0, t0, x1 - x0, b0 - t0);
+    }
+    strip(0, t0 + 1, W, 3, 0, vy0, W, t0 - vy0);
+    strip(0, b0 - 4, W, 3, 0, b0, W, vy1 - b0);
+    // The veil covers the footage's rectangle too; the footage is drawn over it next.
+    ctx.fillStyle = 'rgba(8,10,14,0.24)'; ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
+    for (const [x0, x1, e] of [[vx0, 0, m.left], [W, vx1, m.right]]) {
+      if (x1 <= x0) continue;
+      const at = (x, y) => y + m.slope * (x - e.x);
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2.5 * k;
+      ctx.beginPath(); for (const y of [e.top, e.bot]) { ctx.moveTo(x0, at(x0, y)); ctx.lineTo(x1, at(x1, y)); } ctx.stroke();
+      ctx.setLineDash([22 * k, 18 * k]); ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath();
+      const mid = (e.top + e.bot) / 2; ctx.moveTo(x0, at(x0, mid)); ctx.lineTo(x1, at(x1, mid)); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+
+  // Measured once per plate: at each side edge, the run of asphalt-coloured rows round the car's wheels, and the colours
+  // just above and below it. Nothing is assumed about the colour or width of the road.
+  roadModel() {
+    const d = this.data;
+    if (this.road?.plate === d.plate && this.road.road === d.road) return this.road.model;
+    const W = d.width, H = d.height, c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d', {willReadFrequently: true}); g.drawImage(d.plate, 0, 0, W, H);
+    const px = g.getImageData(0, 0, W, H).data, at = (x, y) => { const i = (Math.max(0, Math.min(H - 1, Math.round(y))) * W + Math.max(0, Math.min(W - 1, Math.round(x)))) * 4; return [px[i], px[i + 1], px[i + 2]]; };
+    const med = a => a.sort((p, q) => p - q)[a.length >> 1];
+    const mean = pts => [0, 1, 2].map(i => Math.round(med(pts.map(p => p[i]))));
+    const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    const b = this.spriteBox(), carH = Math.max(20, d.spriteMeta?.height || 1.5 * (d.ppm || 60));
+    const slope = d.road(W) - d.road(0); const sl = slope / W;
+    const edge = x => {
+      const gy = d.road(x) + (d.spriteMeta ? Math.max(0, b.b) : 0.35 * carH);
+      const seed = mean([-0.25, -0.2, -0.15, -0.1, -0.05, -0.03].flatMap(o => [-3, 0, 3].map(dx => at(x + dx, gy + o * carH))));
+      const y0 = gy - 0.1 * carH, lim = 0.5 * H, scan = dir => {
+        let last = y0, gap = 0;
+        for (let y = y0; Math.abs(y - y0) < lim && y > 0 && y < H - 1; y += dir) { if (dist(at(x, y), seed) < 45) { last = y; gap = 0; } else if (++gap > 8) break; }
+        return last;
+      };
+      let top = scan(-1), bot = scan(1);
+      if (bot - top < 0.4 * carH) { top = gy - 0.6 * carH; bot = gy + 0.3 * carH; }
+      const col = a => `rgb(${a.join(',')})`;
+      // Above and below: the colours just inside the picture's letterbox, carried on past the stretched strip.
+      return {x, top, bot, above: col(mean([...Array(8)].map((_, i) => at(x, t0 + 2 + i)))), below: col(mean([...Array(8)].map((_, i) => at(x, b0 - 2 - i))))};
+    };
+    // Letterbox bars (near-black rows at the top and bottom of the whole width) are left out of the stretched strip.
+    const lum = y => { let s = 0; for (let x = 0; x < W; x += 16) { const p = at(x, y); s += p[0] + p[1] + p[2]; } return s / (3 * Math.ceil(W / 16)); };
+    let t0 = 0, b0 = H - 1;
+    while (t0 < H / 4 && lum(t0) < 16) t0++;
+    while (b0 > 3 * H / 4 && lum(b0) < 16) b0--;
+    b0 += 1;
+    const left = edge(6), right = edge(W - 7);
+    // Edge rows and the lines run along the car's own line of travel; the left/right rows are relative to their edge column.
+    this.road = {plate: d.plate, road: d.road, model: {slope: sl, t0, b0, left, right}};
+    return this.road.model;
+  }
+
   // A click's x on the canvas as an x on the footage (the camera may be pulled back while a fork plays).
   toFrameX(x) {
     const c = this.forking && this.cam && this.cam.s < 0.999 ? this.cam : null;
@@ -176,8 +290,9 @@ export class Stage {
   // out, and when the fork reaches its outcome a callout that stays (red for a hit, green for a stop in time).
   drawCrossing(frame) {
     const d = this.data, ctx = this.ctx, h = this.hazard, x = h?.x_px ?? d.crossing.x, y = h?.y_px ?? d.crossing.y;
-    const k = this.scale(), ppm = d.ppm || 30, bw = Math.max(14, Math.min(60, 1.6 * ppm)) / 2;
-    const ground = y + Math.max(0, this.spriteBox().b), tall = Math.max(80, Math.min(170, 2 * ppm));
+    // A person at their true height (1.7 m), but never smaller than ~60 screen px, so it reads when the camera is pulled back.
+    const k = this.scale(), cs = this.forking && this.cam ? this.cam.s : 1, ppm = d.ppm || 30, bw = Math.max(0.8 * ppm, 10 / cs);
+    const ground = y + Math.max(0, this.spriteBox().b), tall = Math.max(1.7 * ppm, 60 / cs);
     ctx.save();
     // The band: pale stripes across the road, with a line down its middle that reads at any size.
     const top = Math.max(0, ground - 1.2 * tall), bot = Math.min(d.height, ground + 0.35 * tall);
@@ -196,7 +311,13 @@ export class Stage {
     const ev = h?.event;
     if (ev && frame >= ev.frame) {
       const hit = ev.kind === 'impact', col = hit ? '#ff453a' : '#30d158';
-      this.callout(Math.min(Math.max(x, 140 * k), d.width - 140 * k), Math.max(40 * k, top - 52 * k), h.outcome.text, col);
+      // A stop in time: a green bar from the car's front to the crossing shows the gap the callout names.
+      if (!hit) {
+        const dir = Math.sign(x - ev.x_px) || 1, bx = this.spriteBox(), x0 = ev.x_px + (dir > 0 ? bx.r : bx.l), yb = ground + 0.18 * tall;
+        ctx.strokeStyle = col; ctx.lineWidth = 4 * k; ctx.beginPath(); ctx.moveTo(x0, yb); ctx.lineTo(x, yb);
+        ctx.moveTo(x0, yb - 8 * k); ctx.lineTo(x0, yb + 8 * k); ctx.moveTo(x, yb - 8 * k); ctx.lineTo(x, yb + 8 * k); ctx.stroke();
+      }
+      this.callout(Math.min(Math.max(x, 140 * k), d.width - 140 * k), Math.max(40 * k, top - 66 * k), h.outcome.text, col);
     }
     ctx.restore();
   }
@@ -229,6 +350,7 @@ export class Stage {
   // Where the fork leaves the shot, pull the camera back (the server trims the path at five frames across) so the
   // whole arc stays in view. It looks a few frames ahead and eases, so it moves before the object reaches the edge.
   camera(frame) {
+    if (this.followed()) return this.followCamera(frame);
     const d = this.data, W = d.width, H = d.height, b = this.spriteBox();
     let x0 = 0, y0 = 0, x1 = W, y1 = H;
     for (const q of d.forkPath) {

@@ -6,7 +6,7 @@ const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (c
 export function drawPlot(svg, {track, fitPath, forkPath, fps, ppm, origin, axis = 'y', now = null, start = 0, speed = null}) {
   if (speed) { fitPath = speed.real; forkPath = speed.fork; track = null; }
   svg.innerHTML = '';
-  const W = svg.clientWidth || 600, H = svg.clientHeight || 220, L = 46, R = 12, T = 10, B = 26;
+  const W = svg.clientWidth || 600, H = svg.clientHeight || 220, L = 46, R = 12, T = 22, B = 26;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   // Pixels → metres in the lab frame (y up), relative to the first tracked point.
   const val = p => speed ? p[1] : axis === 'y' ? (origin[1] - p[2]) / ppm : (p[1] - origin[0]) / ppm;
@@ -23,7 +23,7 @@ export function drawPlot(svg, {track, fitPath, forkPath, fps, ppm, origin, axis 
   svg.append(el('line', {class: 'axis', x1: L, y1: H - B, x2: W - R, y2: H - B}), el('line', {class: 'axis', x1: L, y1: T, x2: L, y2: H - B}));
   for (const t of ticks(t0, t1, 6)) { const tx = el('text', {class: 'tick', x: X(t), y: H - 8, 'text-anchor': 'middle'}); tx.textContent = `${+t.toFixed(2)} s`; svg.append(tx); }
   for (const v of ticks(v0, v1, 4)) { const tx = el('text', {class: 'tick', x: L - 6, y: Y(v) + 3, 'text-anchor': 'end'}); tx.textContent = `${+v.toFixed(2)}`; svg.append(tx); }
-  const unit = el('text', {class: 'tick', x: 4, y: T + 8}); unit.textContent = speed ? 'speed km/h' : axis === 'y' ? 'height m' : 'across m'; svg.append(unit);
+  const unit = el('text', {class: 'tick', x: 4, y: 12}); unit.textContent = speed ? 'speed km/h' : axis === 'y' ? 'height m' : 'across m'; svg.append(unit);
   const line = (pts, cls) => { if (pts?.length > 1) svg.append(el('path', {class: cls, d: pts.map((p, i) => `${i ? 'L' : 'M'}${X(tOf(p[0])).toFixed(1)},${Y(val(p)).toFixed(1)}`).join('')})); };
   line(fitPath, 'law');
   line(forkPath, 'forkline');

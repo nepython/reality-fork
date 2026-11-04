@@ -109,7 +109,7 @@ test('fork: braking at the measured speed hits, and at 30 km/h stops short, with
 
 test('fork: someone steps out before the footage starts, by extrapolating back', () => {
   const f = forkPixels(car, {brake: {hazard_px: 400, distance_m: 20}}, FORK);   // the crossing is 11 m on, so the trigger is behind the start
-  assert.ok(f.hazard.step_out_frame < f.path[0][0]);
+  assert.ok(f.hazard.step_out_frame < 0 && f.path[0][0] < f.hazard.step_out_frame);   // the fork starts before the footage, half a second before the step-out
   assert.ok(f.path.every(p => Number.isFinite(p[1]) && Number.isFinite(p[2])));
 });
 

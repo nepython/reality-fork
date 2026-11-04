@@ -7,14 +7,24 @@ clip, tracks what moves, measures it, works out which law of motion explains it,
 bars, checks its own answer against the footage, and then lets you *fork reality*: replay your own footage with the Moon's
 gravity, without air, or with a bouncier ball, while everything else in the shot stays as filmed.
 
-> Demo video: _link_ · Live app: _link_ · Built for the Meta Global AI Developer Hackathon (Oct 27 – Nov 4, 2026), Indie track,
-> theme "Push the Frontier": accelerate a scientific experiment, understand a physical system.
+> Demo video: _link_ · Live app: [reality-fork.onrender.com](https://reality-fork.onrender.com) (free tier: the first
+> visit may take a minute to wake it) · Built for the Meta Global AI Developer Hackathon (Oct 27 – Nov 4, 2026), Indie
+> track, theme "Push the Frontier": accelerate a scientific experiment, understand a physical system.
 
 ## Why
 
-Measuring motion from video is a standard tool in engineering, robotics and lab science (drop tests, impact tests,
-tuning a simulator to match the real world), but today it means a high-speed camera and clicking points frame by frame
-in tools like Tracker or ProAnalyst. Reality Fork does the whole loop from a phone clip, and shows its working.
+**A street's speed, measured by the people who live on it.** Whether a person hit by a car survives depends mostly on
+the car's speed, which is why the 2020 Stockholm Declaration on road safety asks for 30 km/h wherever people on foot mix
+with traffic. Parents who want that outside a school are usually asked for evidence: a speed survey, summarised by the
+85th-percentile speed, which takes a radar gun or a council traffic count. With Reality Fork they film the street on a
+phone. The agent measures each car's speed with an honest error bar, a fork replays the same car braking for someone who
+steps out 20 m ahead (at the speed it was filmed, then at 30, 40 and 50 km/h), and a coding agent turns a folder of
+clips into the survey table.
+
+**The same instrument works on anything that moves.** Measuring motion from video is a standard tool in engineering,
+robotics and lab science (drop tests, impact tests, tuning a simulator to match the real world), but today it means a
+high-speed camera and clicking points frame by frame in tools like Tracker or ProAnalyst. Reality Fork does the whole
+loop from a phone clip, shows its working, and gets the Moon's gravity right from 1972 TV footage.
 
 ## What Meta's models do here
 
@@ -58,7 +68,9 @@ flowchart LR
    instead and both are marked with race lines showing the gap in metres. When the fork leaves the shot (a throw on the
    Moon rises far above the room and lands 14 m away), the camera pulls back over a metre grid to follow it, with the
    footage framed in the middle and the floor carried on beyond it. Any fork can be saved as an MP4 clip (recorded in
-   the browser, labelled, ready to share).
+   the browser, labelled, ready to share). A car crossing the frame gets a braking fork instead: someone steps out at a
+   point you click on the road, and the same car (at its measured speed or another) reacts for 1.5 s and brakes at
+   7 m/s², stopping short or reaching them at a stated speed. Both numbers are assumptions and every summary says so.
 
 ## Accuracy
 
@@ -107,7 +119,9 @@ a disk cache, so replaying a finished run costs nothing. A typical live analysis
 
 **From a coding agent.** The same lab is a tool for Muse Code (Meta's coding agent), Claude Code or Codex: an MCP server
 (`npm run mcp`, i.e. `node mcp/server.mjs`), a shell CLI (`node mcp/cli.mjs analyze <video>`) and a skill file
-(`mcp/SKILL.md`). Tools: `list_clips`, `analyze_video`, `fork_motion`, `export_measurements`. Saved runs are free; a new
+(`mcp/SKILL.md`). Tools: `list_clips`, `analyze_video`, `fork_motion`, `export_measurements`, `braking_fork` (would this
+car stop for someone stepping out?) and `speed_survey` (many clips of one street become its mean and 85th-percentile
+speed, with a Monte Carlo error bar, and the share over a limit). Saved runs are free; a new
 analysis needs `live=true` and the server started with `RF_ALLOW_LIVE=1`. Setup for each agent is in
 [mcp/README.md](mcp/README.md).
 
