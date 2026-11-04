@@ -17,6 +17,12 @@ const PORT = Number(process.env.PORT || 8790);
 const LIVE_PER_HOUR = Number(process.env.RF_LIVE_PER_HOUR || 6);
 const hits = new Map();
 // Separate allowances per kind: a spoken question (a fraction of a cent) must not use up a visitor's live analyses.
+// Live (paid) calls are open until RF_LIVE_UNTIL (an ISO date; unset = always): the hackathon's judging ends then, and
+// afterwards the samples still replay their saved runs for free.
+const LIVE_UNTIL = Date.parse(process.env.RF_LIVE_UNTIL || '');
+const liveOpen = () => !Number.isFinite(LIVE_UNTIL) || Date.now() < LIVE_UNTIL;
+const LIVE_CLOSED = 'Live analysis was open during the hackathon judging and has now ended; the sample clips still replay their saved runs.';
+
 function allowLive(req, kind = 'live', perHour = LIVE_PER_HOUR) {
   const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, key = kind + ' ' + ip;
   const now = Date.now(), list = (hits.get(key) || []).filter(t => now - t < 3600e3);
@@ -150,7 +156,8 @@ async function api(req, res, url) {
   if (url.pathname === '/api/clips') {
     return send(res, 200, samples().map(({file, ...c}) => ({...c, analysed: !!latestRun(c.id)})));
   }
-  if (url.pathname === '/api/status') return send(res, 200, {spent_usd: Math.round(spent() * 1000) / 1000});
+  if (url.pathname === '/api/status') return send(res, 200, {spent_usd: Math.round(spent() * 1000) / 1000, live: liveOpen(),
+    live_until: Number.isFinite(LIVE_UNTIL) ? new Date(LIVE_UNTIL).toISOString() : null, ...(!liveOpen() && {notice: LIVE_CLOSED})});
 
   if (url.pathname === '/api/upload' && req.method === 'POST') {
     const body = await readBody(req);
@@ -173,6 +180,7 @@ async function api(req, res, url) {
       emit({type: 'done', replay: true});
       return res.end();
     }
+    if (!liveOpen()) { emit({type: 'error', message: LIVE_CLOSED}); return res.end(); }
     if (!allowLive(req)) { emit({type: 'error', message: 'Live analysis limit reached for now; try a sample, or come back in an hour.'}); return res.end(); }
     const ping = setInterval(() => res.write(': ping\n\n'), 15000);
     try {
@@ -230,6 +238,7 @@ async function api(req, res, url) {
     const out = path.join(ASSETS, hashOf(clip.id, body.world, 'restyle') + '.jpg');
     if (!fs.existsSync(out)) {
       // Only a new picture is paid for, so only that counts against the hourly limit.
+      if (!liveOpen()) return send(res, 403, {error: LIVE_CLOSED});
       if (!allowLive(req, 'restyle', 10)) return send(res, 429, {error: 'limit reached'});
       const img = await editImage({imageDataUrl: dataUrl(plate), prompt: worlds[body.world], size: `${info.width}x${info.height}`});
       fs.writeFileSync(out, encodeImage(decodeImage(Buffer.from(img.b64, 'base64'), info.width, info.height), 'jpeg', {quality: 2}));
@@ -238,6 +247,7 @@ async function api(req, res, url) {
   }
 
   if (url.pathname === '/api/transcribe' && req.method === 'POST') {
+    if (!liveOpen()) return send(res, 403, {error: LIVE_CLOSED});
     if (!allowLive(req, 'voice', 30)) return send(res, 429, {error: 'limit reached'});
     const wav = await readBody(req, 8 << 20);
     return send(res, 200, {text: await transcribe(wav, {keywords: ['gravity', 'pendulum', 'Moon', 'Mars', 'bounce', 'drag']})});

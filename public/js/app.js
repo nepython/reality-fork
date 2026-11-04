@@ -356,3 +356,8 @@ addEventListener('resize', () => { sizeChat(); state.fit && plot(stage.frame); }
 new ResizeObserver(sizeChat).observe(document.querySelector('.rail'));
 sizeChat();
 loadClips();
+// After the hackathon's judging the server stops paid calls; say so once, where it is seen.
+fetch('/api/status').then(r => r.json()).then(st => {
+  if (st.live !== false) return;
+  const t = $('toast'); t.textContent = st.notice; t.hidden = false; t.onclick = () => { t.hidden = true; };
+}).catch(() => {});

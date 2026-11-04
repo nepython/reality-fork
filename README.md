@@ -113,7 +113,8 @@ analysis needs `live=true` and the server started with `RF_ALLOW_LIVE=1`. Setup 
 
 **Deploy.** `docker build -t reality-fork . && docker run -p 7860:7860 -e MODEL_API_KEY=... reality-fork`. A fresh
 container seeds its cache from `demo/` (the samples' runs and SAM results, exported by `node scripts/export-demo.mjs`),
-so the samples replay for free; live runs are limited per visitor (`RF_LIVE_PER_HOUR`, default 6) and by the cap.
+so the samples replay for free; live runs are limited per visitor (`RF_LIVE_PER_HOUR`, default 6), by the cap, and by an
+end date (`RF_LIVE_UNTIL`, set to the end of the hackathon's judging), after which visitors see a notice and replays only.
 
 ## Limits
 
