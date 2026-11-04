@@ -39,7 +39,7 @@ test('MCP: handshake, ping, tool list', async () => {
     c.notify('notifications/initialized');
     assert.deepEqual((await c.call('ping')).result, {});
     const {tools} = (await c.call('tools/list')).result;
-    assert.deepEqual(tools.map(t => t.name), ['list_clips', 'analyze_video', 'fork_motion', 'export_measurements']);
+    assert.deepEqual(tools.map(t => t.name), ['list_clips', 'analyze_video', 'fork_motion', 'export_measurements', 'braking_fork', 'speed_survey']);
     for (const t of tools) { assert.equal(t.inputSchema.type, 'object'); assert.ok(t.description.length > 40); }
     assert.equal((await c.call('nope')).error.code, -32601);
     // An unknown protocol version is answered with one we support.

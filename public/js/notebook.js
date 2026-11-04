@@ -1,5 +1,6 @@
 // The lab chat: the user's questions and forks as bubbles, the agent's run as assistant messages with inline results.
 // What is shown, and when, is decided by director.js; this file only builds and fills the messages.
+import {vehicleOf, kmhText} from './vehicle.js';
 const unit = u => String(u ?? '').replace('^2', '²').replace('^3', '³').replace('deg', '°');
 export const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 export const num = (v, s) => {
@@ -103,11 +104,12 @@ export class Notebook {
   }
 
   report(rep) {
+    const car = vehicleOf(rep);
     const rows = (rep.measurements || []).map(m => {
       // An error bar drawn against ±50%: the whisker's length is the relative uncertainty, so a tight value looks tight.
       const rel = m.sigma && m.value ? Math.min(0.5, Math.abs(m.sigma / m.value)) : 0;
       return `<div class="meas-row"><span class="n">${esc(m.name)}</span>
-      <span class="v">${num(m.value, m.sigma)}${m.sigma ? ` <small>± ${num(m.sigma, m.sigma)}</small>` : ''} <small>${esc(unit(m.unit))}</small></span>
+      <span class="v">${num(m.value, m.sigma)}${m.sigma ? ` <small>± ${num(m.sigma, m.sigma)}</small>` : ''} <small>${esc(unit(m.unit))}</small>${car && m.unit === 'm/s' && Math.abs(m.value - car.speed) < 0.01 * car.speed ? ` <small class="kmh">= ${kmhText(car)}</small>` : ''}</span>
       ${m.sigma ? `<span class="eb" title="±${(100 * Math.abs(m.sigma / m.value)).toFixed(1)}% uncertainty"><i style="left:${50 - rel * 100}%;width:${rel * 200}%"></i><b></b></span>` : ''}
       ${m.compare_to ? `<span class="c">${esc(m.compare_to)}</span>` : ''}</div>`;
     }).join('');

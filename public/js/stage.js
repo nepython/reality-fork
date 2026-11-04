@@ -40,7 +40,8 @@ export class Stage {
   redraw() { this.draw(this.frame); }
 
   // ---- fork playback -------------------------------------------------------------------------------------------
-  setFork(path, {label, start, end, baseline, floor} = {}) {
+  setFork(path, {label, start, end, baseline, floor, hazard} = {}) {
+    this.hazard = hazard || null;
     this.data.forkPath = path;
     this.data.floorPx = floor ?? null;
     this.data.basePath = baseline || null;
@@ -94,6 +95,7 @@ export class Stage {
         if (p) this.ring(p[1], p[2], this.radius(), COL.fit);
       }
       if (this.show.path && d.track) this.dots(d.track.filter(q => q[0] <= frame), COL.measured);
+      if (d.crossing) this.drawCrossing(frame);
     }
     if (this.caption) this.drawCaption();
     this.onFrame?.(frame);
@@ -150,6 +152,7 @@ export class Stage {
       if (cam.s < 0.8) { ctx.strokeStyle = COL.fork; ctx.lineWidth = 2.5 / cam.s; ctx.beginPath(); ctx.arc(p[1], p[2], 14 / cam.s, 0, 7); ctx.stroke(); }
       if (d.plateSteady === false) this.gapLines(frame, p);
     } else if (d.world && frame < start) { const q = d.track?.find(r => r[0] === frame); if (q) this.sprite(q[1], q[2]); }
+    if (d.crossing) this.drawCrossing(frame);
     if (cam.s < 0.999) {
       // The footage's own edges, so the viewer sees how far beyond the shot the fork has gone.
       ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2 / cam.s; ctx.setLineDash([]);
@@ -161,6 +164,66 @@ export class Stage {
       const t = Math.max(0, (frame - start) / d.fps);
       this.badge.innerHTML = `<span class="k">${this.forkLabel || 'fork'}</span> · t = ${t.toFixed(2)} s${this.gapText ? ' · ' + this.gapText + ' than reality' : ''}`;
     }
+  }
+
+  // A click's x on the canvas as an x on the footage (the camera may be pulled back while a fork plays).
+  toFrameX(x) {
+    const c = this.forking && this.cam && this.cam.s < 0.999 ? this.cam : null;
+    return c ? c.cx + (x - this.data.width / 2) / c.s : x;
+  }
+
+  // Where someone steps out in front of a car: a zebra band across the road, a little walker once they have stepped
+  // out, and when the fork reaches its outcome a callout that stays (red for a hit, green for a stop in time).
+  drawCrossing(frame) {
+    const d = this.data, ctx = this.ctx, h = this.hazard, x = h?.x_px ?? d.crossing.x, y = h?.y_px ?? d.crossing.y;
+    const k = this.scale(), ppm = d.ppm || 30, bw = Math.max(14, Math.min(60, 1.6 * ppm)) / 2;
+    const ground = y + Math.max(0, this.spriteBox().b), tall = Math.max(80, Math.min(170, 2 * ppm));
+    ctx.save();
+    // The band: pale stripes across the road, with a line down its middle that reads at any size.
+    const top = Math.max(0, ground - 1.2 * tall), bot = Math.min(d.height, ground + 0.35 * tall);
+    ctx.fillStyle = 'rgba(255,255,255,0.16)'; ctx.fillRect(x - bw, top, 2 * bw, bot - top);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    const n = Math.max(3, Math.round((bot - top) / (bw * 0.7)));
+    for (let i = 0; i < n; i += 2) ctx.fillRect(x - bw, top + (i * (bot - top)) / n, 2 * bw, (bot - top) / n);
+    ctx.strokeStyle = '#ffd60a'; ctx.lineWidth = 2.5 * k; ctx.setLineDash([8 * k, 6 * k]);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, d.height); ctx.stroke(); ctx.setLineDash([]);
+    // The person appears when they step out; the idle marker (no fork yet) shows them faintly so the spot is clear.
+    const out = !h || frame >= (h.step_out_frame ?? 0);
+    ctx.globalAlpha = h ? (out ? 1 : 0) : 0.6;
+    if (ctx.globalAlpha) this.walker(x, ground, tall, frame);
+    ctx.globalAlpha = 1;
+    this.label(x, Math.max(18, top - 14 * k), h ? 'crossing' : 'crossing · click the road to move', '#ffd60a');
+    const ev = h?.event;
+    if (ev && frame >= ev.frame) {
+      const hit = ev.kind === 'impact', col = hit ? '#ff453a' : '#30d158';
+      this.callout(Math.min(Math.max(x, 140 * k), d.width - 140 * k), Math.max(40 * k, top - 52 * k), h.outcome.text, col);
+    }
+    ctx.restore();
+  }
+
+  // A walking person from simple strokes: head, body, swinging arms and legs.
+  walker(x, ground, tall, frame) {
+    const ctx = this.ctx, s = tall / 100, sw = Math.sin(frame * 0.5) * 12 * s, hip = ground - 45 * s, sh = ground - 78 * s;
+    const draw = (c, w) => {
+      ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath();
+      ctx.moveTo(x, sh); ctx.lineTo(x, hip);                                   // body
+      ctx.moveTo(x, sh + 4 * s); ctx.lineTo(x + sw, sh + 30 * s);               // arms
+      ctx.moveTo(x, sh + 4 * s); ctx.lineTo(x - sw, sh + 30 * s);
+      ctx.moveTo(x, hip); ctx.lineTo(x - sw * 1.2, ground);                     // legs
+      ctx.moveTo(x, hip); ctx.lineTo(x + sw * 1.2, ground);
+      ctx.stroke(); ctx.beginPath(); ctx.arc(x, sh - 10 * s, 9 * s, 0, 7); ctx.stroke();
+    };
+    draw('rgba(8,10,18,0.9)', 7 * s); draw('#fff', 3.5 * s);
+  }
+
+  callout(x, y, text, color) {
+    const ctx = this.ctx, k = this.scale() * 1.5;
+    ctx.save(); ctx.font = `700 ${16 * k}px system-ui, sans-serif`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    const w = ctx.measureText(text).width + 24 * k, hgt = 34 * k;
+    ctx.fillStyle = color; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.roundRect(x - w / 2, y - hgt / 2, w, hgt, 8 * k); ctx.fill();
+    ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.fillText(text, x, y + 1);
+    ctx.restore();
   }
 
   // Where the fork leaves the shot, pull the camera back (the server trims the path at five frames across) so the

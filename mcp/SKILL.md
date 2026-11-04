@@ -18,6 +18,8 @@ MCP tools (if the `reality-fork` server is connected):
 - `analyze_video({path | clip_id, question?, live?})` - headline, answer, law, measurements with sigma, assumptions, confidence.
 - `fork_motion({clip_id, g?, drag?, e?})` - re-simulation: summary, landing/bounce events, path every 0.1 s in metres.
 - `export_measurements({clip_id})` - JSON of the fitted law, parameters, sigmas, scale, frame range, fps.
+- `braking_fork({clip_id, hazard_distance_m = 20, speed_kmh?, react_s = 1.5, decel = 7})` - for a clip of a car crossing the frame: does it stop if someone steps out that far ahead, by how many metres, or at what speed does it hit? Both the measured speed (with its error bar) and `speed_kmh` if given.
+- `speed_survey({clip_ids, limit_kmh = 30})` - many analysed car clips: each speed in km/h with sigma, the mean, the 85th-percentile speed with an uncertainty, the share over the limit, and a plain summary. Non-vehicle or unanalysed clips are listed as skipped, with the reason.
 
 Shell (same tools, JSON on stdout; use this if MCP is not available):
 ```
@@ -25,8 +27,13 @@ node <DIR>/mcp/cli.mjs list
 node <DIR>/mcp/cli.mjs analyze <video-path|clip_id> --question "what is g?"
 node <DIR>/mcp/cli.mjs fork <clip_id> --g 1.62        # or --g moon, --drag none, --e 0.8
 node <DIR>/mcp/cli.mjs export <clip_id>
+node <DIR>/mcp/cli.mjs brake <clip_id> --distance 20 --speed 30   # also --react 1.5 --decel 7
+node <DIR>/mcp/cli.mjs survey <clip_id> <clip_id> ... --limit 30
 ```
 Typical flow: `analyze`, then `export` to get numbers, optionally `fork`. Put the exported values into the user's code, with their sigmas as tolerances.
+
+## Cars: braking and speed surveys
+Use `braking_fork` when the question is about safety on a street ("would the car stop if a child stepped out 20 m ahead?", "what difference does 30 km/h make?") and `speed_survey` when someone needs the speed of traffic for a council or a school: councils act on the **85th-percentile speed**, the speed 85% of drivers stay under, not the average. Both need clips already analysed with a constant-velocity fit of something moving sideways across the frame at over 2 m/s. Always quote the stated assumptions with the answer: 1.5 s perception-reaction time and hard braking at 7 m/s² on dry asphalt are typical figures, not measurements; change `react_s` and `decel` for a tired driver or a wet road. Each clip's speed depends on the scale (the size of a known object such as a car's length), so say so, and with fewer than about 20 clips call the 85th percentile a rough guide.
 
 ## Reading the numbers
 - Every value has a 1-sigma error. `sigma` in `analyze_video` measurements already includes the scale uncertainty; in `export_measurements` use `sigma_total` for real-world claims and `sigma_fit` for fit-only noise.

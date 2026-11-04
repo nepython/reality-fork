@@ -4,9 +4,10 @@ import {drawPlot} from './plot.js';
 import {Voice} from './voice.js';
 import {Director} from './director.js';
 import {decodeMasks} from './masks.js';
+import {vehicleOf, kmhText, roadY} from './vehicle.js';
 
 const $ = id => document.getElementById(id);
-const state = {clips: [], clip: null, info: null, run: null, fit: null, axis: 'y'};
+const state = {vehicle: null, hazardPx: null, clips: [], clip: null, info: null, run: null, fit: null, axis: 'y'};
 
 const stage = new Stage({video: $('video'), canvas: $('overlay'), badge: $('stageBadge'), onFrame: f => {
   $('scrub').value = Math.min(f, Number($('scrub').max));
@@ -172,8 +173,11 @@ async function post(url, body) {
 
 function plot(frame) {
   if (!state.fit?.ppm) return;
-  drawPlot($('plot'), {...state.fit, forkPath: stage.forking ? stage.data.forkPath : null, fps: state.info.fps, axis: state.axis, now: frame});
+  // A car's fork is told in speed against time (reality's steady line against the fork's), not in position.
+  const speed = state.vehicle && stage.forking ? state.fork?.res.speed : null;
+  drawPlot($('plot'), {...state.fit, forkPath: stage.forking ? stage.data.forkPath : null, fps: state.info.fps, axis: state.axis, now: frame, speed});
   const cap = $('plotCaption');
+  if (speed) { cap.innerHTML = '<span class="key f">reality, as filmed</span><span class="key k">fork</span>'; return; }
   cap.innerHTML = `<span class="key m">measured by SAM 3.1</span><span class="key f">fitted law</span>${stage.forking ? '<span class="key k">fork</span>' : ''}`;
 }
 
@@ -184,9 +188,24 @@ const PRESETS = [
   {label: 'Super bouncy', e: 0.95, why: 'restitution 0.95', models: ['bounce']},
 ];
 
+// For a car crossing the frame the gravity worlds mean nothing; the story is a person stepping out (see lib/vehiclefork.mjs).
+const CAR_PRESETS = [
+  {label: 'Someone steps out 20 m ahead', why: 'brakes at the measured speed', vehicle: {brake: true}},
+  {label: 'Same, at 30 km/h', why: 'steps out 20 m ahead, 30 km/h', vehicle: {brake: true, speed_kmh: 30}},
+  {label: 'Same, at 40 km/h', why: 'steps out 20 m ahead, 40 km/h', vehicle: {brake: true, speed_kmh: 40}},
+  {label: 'Just slower: 30 km/h', why: 'the same car at 30 km/h', vehicle: {speed_kmh: 30}},
+];
+
 function renderForks(rep) {
   const box = $('forks'); box.innerHTML = '';
   const model = rep.fit?.model;
+  state.vehicle = vehicleOf(rep); state.lastFork = null;
+  const hint = $('crossHint'); hint.hidden = !state.vehicle;
+  if (state.vehicle) {
+    // The crossing starts three quarters of the way across, in the direction the car travels; a click on the road moves it.
+    state.hazardPx = state.info.width * (state.vehicle.dir > 0 ? 0.75 : 0.25);
+    placeCrossing();
+  } else stage.setAnalysis({crossing: null});
   const fromAgent = (rep.forks || []).map(f => ({label: f.label, g: f.g > 0 ? f.g : undefined, drag: f.drag === 'none' ? 'none' : undefined, e: f.e >= 0 ? f.e : undefined, why: f.why, agent: true}));
   // A preset is left out when the agent already offers it, by name or by the same change under its own name
   // ("same throw on Moon" is the Moon preset; "vacuum flight" is No air).
@@ -197,11 +216,13 @@ function renderForks(rep) {
   const sameAs = p => fromAgent.some(f => near(f.g, p.g) && (hasDrag ? f.drag === p.drag : !p.drag) && near(f.e, p.e));
   // Nor is a world offered where the clip was filmed: "Moon" on Apollo footage would replay reality.
   const filmed = Number.isFinite(rep.filmed_g) ? rep.filmed_g : 9.81, home = p => p.g != null && Math.abs(p.g - filmed) < 0.05;
-  const list = [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && !sameAs(p) && !home(p) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
+  // Slower-than-filmed presets only: "30 km/h" on a car that was doing 25 would be a speed-up.
+  const list = state.vehicle ? CAR_PRESETS.filter(p => !p.vehicle.speed_kmh || p.vehicle.speed_kmh < state.vehicle.kmh - 1)
+    : [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && !sameAs(p) && !home(p) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
   const real = document.createElement('button');
   real.className = 'fork real active'; real.innerHTML = 'Reality<small>as filmed</small>';
   real.onclick = () => {
-    activate(real); stage.setFork(null); state.fork = null; $('saveClip').hidden = true; $('forkSummary').textContent = ''; $('stageBadge').hidden = true; plot(stage.frame);
+    activate(real); stage.setFork(null); state.fork = null; state.lastFork = null; $('saveClip').hidden = true; $('forkSummary').textContent = ''; $('stageBadge').hidden = true; plot(stage.frame);
     nb.user('Reality'); nb.msg('lab', 'Back to the footage as it was filmed.');
   };
   box.append(real);
@@ -228,11 +249,16 @@ function showForkbar(instant) {
 
 function activate(b) { document.querySelectorAll('.fork').forEach(x => x.classList.toggle('active', x === b)); }
 
-async function fork(f, button) {
+async function fork(f, button, moved = false) {
   if (director.playing) return;
   activate(button);
-  nb.user(f.label);
+  nb.user(moved ? `${f.label} (crossing moved)` : f.label);
   const overrides = {}; if (f.g) overrides.g = f.g; if (f.drag) overrides.drag = f.drag; if (f.e != null) overrides.e = f.e;
+  if (f.vehicle) {
+    state.lastFork = {f, button};
+    if (f.vehicle.speed_kmh) overrides.speed_kmh = f.vehicle.speed_kmh;
+    if (f.vehicle.brake) overrides.brake = {hazard_px: Math.round(state.hazardPx), distance_m: 20};
+  }
   const clip = state.clip, id = encodeURIComponent(clip.id);
   const res = await post(`/api/fork?clip=${id}`, {overrides});
   if (state.clip !== clip) return;
@@ -255,6 +281,7 @@ async function fork(f, button) {
   nb.body(nb.msg('lab', '')).textContent = res.summary || `Replaying with ${f.why || f.label}.`;
   stage.setAnalysis({world});
   state.fork = {label: f.label, res};
+  if (res.hazard) stage.setAnalysis({crossing: {x: res.hazard.x_px, y: res.hazard.y_px}});
   playFork();
   $('saveClip').hidden = false;
   plot(stage.frame);
@@ -262,7 +289,7 @@ async function fork(f, button) {
 
 const playFork = () => {
   const {label, res} = state.fork;
-  stage.setFork(res.path, {label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline, floor: res.floor_px});
+  stage.setFork(res.path, {label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline, floor: res.floor_px, hazard: res.hazard});
 };
 
 // Save the fork as a video: record the stage canvas while the fork replays from the start, with the label and the
@@ -290,6 +317,22 @@ $('saveClip').onclick = async () => {
   a.click();
   btn.disabled = false; btn.textContent = 'Save this fork as a clip';
 };
+
+// ---- the crossing (cars) ---------------------------------------------------------------------------------------
+function placeCrossing() {
+  if (!state.vehicle) return;
+  stage.setAnalysis({crossing: {x: state.hazardPx, y: roadY(state.vehicle, state.hazardPx)}});
+}
+// Click the road on the video to move where the person steps out; an active braking fork is run again for the new spot.
+$('overlay').addEventListener('click', e => {
+  if (!state.vehicle || director.playing || !state.forksReady) return;
+  const r = $('overlay').getBoundingClientRect(), W = state.info.width;
+  const x = stage.toFrameX((e.clientX - r.left) * W / r.width);
+  state.hazardPx = Math.max(0.08 * W, Math.min(0.97 * W, x));
+  placeCrossing();
+  const last = state.lastFork;
+  if (last?.f.vehicle.brake && state.fork) fork(last.f, last.button, true);
+});
 
 // ---- transport, upload, voice ----------------------------------------------------------------------------------
 $('play').onclick = () => {

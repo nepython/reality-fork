@@ -6,6 +6,8 @@ import {UPLOADS, samples, clipById, clipInfo, latestRun, runFile, runLab, saveUp
 import {forkPixels} from '../lib/forkview.mjs';
 import {GRAVITY} from '../lib/physics/fork.mjs';
 import {MODELS} from '../lib/physics/models.mjs';
+import {brakingScenario, brakingSentence, survey85, REACT_S, DECEL, kmh} from '../lib/physics/braking.mjs';
+import {vehicleMotion} from '../lib/vehiclefork.mjs';
 // spriteFor lives in server.mjs (importing it does not start the server); /api/fork passes its cut-out so that "leaves the
 // frame" is judged on the whole object, and we do the same so the numbers match the web app.
 import {spriteFor} from '../server.mjs';
@@ -74,7 +76,19 @@ function compact(run, clip, note) {
 }
 const overridesOf = ({g, drag, e}) => Object.fromEntries(Object.entries({g, drag, e}).filter(([, v]) => v !== undefined));
 
+// Runs handed in by a test (or a script) instead of read from cache/runs: RF_EXTRA_RUNS names a JSON file of runs (an array
+// of runs, each with its `clip` id). They win over saved runs of the same id and need no video file.
+function injectedRun(clip_id) {
+  const file = process.env.RF_EXTRA_RUNS;
+  if (!file || !fs.existsSync(file)) return null;
+  const runs = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return (Array.isArray(runs) ? runs : Object.values(runs)).find(r => r.clip === clip_id) || null;
+}
+const savedRun = clip_id => injectedRun(clip_id) || latestRun(clip_id);
+
 function needRun(clip_id) {
+  const inj = clip_id && injectedRun(clip_id);
+  if (inj) return {clip: {id: clip_id}, run: inj};
   const clip = resolveClip({clip_id});
   const run = latestRun(clip.id);
   if (!run?.report?.fit) throw fail(`clip ${clip.id} has no saved analysis with a fitted law; call analyze_video first`);
@@ -120,6 +134,71 @@ export async function fork_motion({clip_id, g, drag, e} = {}) {
   };
 }
 
+// A vehicle run: constant-velocity law, mostly sideways, faster than 2 m/s (a walker or a drifting astronaut is not one).
+function vehicleOrWhy(run) {
+  const fit = run.report.fit;
+  if (fit.model !== 'constant-velocity') return {why: `law is ${fit.model}, not a steady speed`};
+  const m = vehicleMotion(run);
+  if (!m) return {why: 'not moving mostly sideways across the frame'};
+  if (m.speed < 2) return {why: `too slow for a vehicle (${round(m.speed, 2)} m/s)`};
+  return {m};
+}
+const VEHICLE_HELP = 'needs a vehicle run: a constant-velocity law, moving mostly sideways at over 2 m/s';
+
+// What would happen if someone stepped out `hazard_distance_m` ahead: at the measured speed (with its error bar) and,
+// if asked, at another speed. Pure arithmetic on the saved fit; no video, no API.
+export function braking_fork({clip_id, hazard_distance_m = 20, speed_kmh, react_s = REACT_S, decel = DECEL} = {}) {
+  // Needs only the saved fit, not the video file, so it reads the run directly.
+  const run = clip_id && savedRun(clip_id), clip = {id: clip_id};
+  if (!run?.report?.fit) throw fail(`clip ${clip_id} has no saved analysis with a fitted law; call analyze_video first`);
+  const {m, why} = vehicleOrWhy(run);
+  if (!m) throw fail(`braking_fork ${VEHICLE_HELP}; clip ${clip.id} is not one (${why})`);
+  const hazard_m = Number(hazard_distance_m);
+  if (!(hazard_m > 0)) throw fail('hazard_distance_m must be a positive number of metres');
+  const one = (label, v, sigma, measured) => {
+    const sc = brakingScenario({v, sigma_v: sigma, hazard_m, react_s: Number(react_s), decel: Number(decel)});
+    return {label, speed_kmh: round(sc.v_kmh, 1), sigma_kmh: round(sc.sigma_v_kmh, 1), outcome: sc.stops ? 'stops before the hazard' : 'reaches the hazard',
+      stops: sc.stops, stops_for_certain: sc.range.stops_certain, metres_short: sc.stops ? round(sc.short_m, 1) : null, impact_kmh: round(sc.impact_kmh, 1),
+      ranges: {impact_kmh: sc.range.impact_kmh.map(x => round(x, 1)), stopping_distance_m: sc.range.stopping_m.map(x => round(x, 1)), margin_m: sc.range.margin_m.map(x => round(x, 1))},
+      distances_m: {reaction: round(sc.reaction_m, 1), braking: round(sc.braking_m, 1), stopping: round(sc.stopping_m, 1)},
+      times_s: {reaction: sc.t_react, braking: round(sc.t_brake, 2), to_hazard: round(sc.t_hazard, 2)},
+      summary: brakingSentence(sc, {measured})};
+  };
+  const scenarios = [one('at the measured speed', m.speed, m.sigma, true)];
+  if (speed_kmh != null) {
+    if (!(Number(speed_kmh) > 0)) throw fail('speed_kmh must be a positive number of km/h');
+    scenarios.push(one(`at ${round(Number(speed_kmh), 1)} km/h`, Number(speed_kmh) / 3.6, 0, false));
+  }
+  return {clip_id: clip.id, measured_speed: `${round(kmh(m.speed), 1)} ± ${round(kmh(m.sigma), 1)} km/h`, hazard_distance_m: hazard_m,
+    assumptions: {react_s: Number(react_s), decel_m_s2: Number(decel), text: `assuming ${react_s} s to react and hard braking at ${decel} m/s²`}, scenarios};
+}
+
+// A speed survey over many analysed clips: each car's speed, the mean, the 85th-percentile speed (the speed 85% of
+// drivers stay under, which councils act on) with an uncertainty from each clip's own error bar, and the share over a limit.
+export function speed_survey({clip_ids, limit_kmh = 30} = {}) {
+  if (!Array.isArray(clip_ids) || !clip_ids.length) throw fail('give clip_ids: a list of analysed clip ids (see list_clips)');
+  const limit = Number(limit_kmh);
+  if (!(limit > 0)) throw fail('limit_kmh must be a positive number');
+  const clips = [], skipped = [];
+  for (const id of clip_ids) {
+    const run = savedRun(id);
+    if (!run?.report?.fit) { skipped.push({clip_id: id, reason: run ? 'analysed, but no law was fitted' : 'not analysed (no saved run; use analyze_video first)'}); continue; }
+    const {m, why} = vehicleOrWhy(run);
+    if (!m) { skipped.push({clip_id: id, reason: `not a vehicle crossing: ${why}`}); continue; }
+    clips.push({clip_id: id, speed_kmh: round(kmh(m.speed), 1), sigma_kmh: round(kmh(m.sigma), 1), over_limit: kmh(m.speed) > limit});
+  }
+  if (!clips.length) return {clips, skipped, summary: 'No clip could be used: ' + (skipped.map(s => `${s.clip_id} (${s.reason})`).join('; ') || 'none given') + '.'};
+  const n = clips.length, mean = clips.reduce((a, c) => a + c.speed_kmh, 0) / n, over = clips.filter(c => c.over_limit).length;
+  const s = survey85(clips.map(c => ({kmh: c.speed_kmh, sigma: c.sigma_kmh})));
+  const result = {n, limit_kmh: limit, mean_kmh: round(mean, 1), p85_kmh: round(s.p85, 1),
+    p85_uncertainty: {median_kmh: round(s.median, 1), interval_68_kmh: [round(s.low, 1), round(s.high, 1)], method: 'Monte Carlo (4000 draws) over each clip\'s own speed error bar'},
+    share_over_limit: round(over / n, 3), n_over_limit: over};
+  result.summary = `Across ${n} measured vehicle${n > 1 ? 's' : ''} the average speed was ${Math.round(mean)} km/h and the 85th-percentile speed (the speed 85% of drivers stay under, which is what councils act on) ` +
+    `was about ${Math.round(s.median)} km/h (68% range ${Math.round(s.low)} to ${Math.round(s.high)}). ${over} of ${n} (${Math.round(100 * over / n)}%) were over the ${limit} km/h limit.` +
+    (n < 20 ? ` With only ${n} clips this is a rough guide; more clips narrow it.` : '') + (skipped.length ? ` ${skipped.length} clip${skipped.length > 1 ? 's were' : ' was'} skipped.` : '');
+  return {...result, clips, skipped};
+}
+
 export function export_measurements({clip_id} = {}) {
   const {clip, run} = needRun(clip_id);
   const r = run.report, fit = r.fit, model = MODELS[fit.model];
@@ -139,6 +218,7 @@ export function export_measurements({clip_id} = {}) {
   };
 }
 
+const CLIP_ID = {type: 'string', description: 'Clip id (from list_clips or analyze_video).'};
 // Schemas for MCP tools/list; the CLI prints them in its help.
 export const TOOLS = [
   {name: 'list_clips', description: 'List the video clips Reality Fork knows (sample clips, test scenes, uploads), with the clip_id to use in the other tools and whether each has been analysed already. Free.',
@@ -163,6 +243,19 @@ export const TOOLS = [
   {name: 'export_measurements', description: 'The fitted law and its parameters as plain JSON to paste into a simulator or analysis script: parameters with 1-sigma errors and units, derived quantities (g, launch speed, drag, ...), frame range, fps, the pixel-per-metre scale with its uncertainty, coordinate conventions and assumptions. Needs an analysed clip. Free.',
     inputSchema: {type: 'object', required: ['clip_id'], properties: {clip_id: {type: 'string', description: 'Clip id (from list_clips or analyze_video).'}}},
     run: export_measurements},
+  {name: 'braking_fork', description: 'For a clip of a car (or bike) crossing the frame: what happens if someone steps out hazard_distance_m ahead of it? Gives the stopping distance, whether it stops in time and by how many metres, or the speed it hits at, with error ranges from the measured speed\'s uncertainty. ' +
+    'Also at another speed if speed_kmh is given (e.g. 30). Assumes a 1.5 s perception-reaction time and hard braking at 7 m/s² on dry asphalt unless you change react_s / decel, and says so. Needs an analysed vehicle clip (constant-velocity law). Free.',
+    inputSchema: {type: 'object', required: ['clip_id'], properties: {clip_id: CLIP_ID,
+      hazard_distance_m: {type: 'number', description: 'Metres between the car and the person when they step out. Default 20.', default: 20},
+      speed_kmh: {type: 'number', description: 'A second speed to compare, in km/h, e.g. 30 for a 30 zone.'},
+      react_s: {type: 'number', description: 'Perception-reaction time in seconds. Default 1.5.', default: 1.5},
+      decel: {type: 'number', description: 'Braking deceleration in m/s². Default 7 (hard braking, dry asphalt).', default: 7}}},
+    run: braking_fork},
+  {name: 'speed_survey', description: 'A speed survey from many analysed clips of passing vehicles (constant-velocity fits): each speed in km/h with its error bar, the mean, the 85th-percentile speed (the speed 85% of drivers stay under; councils act on it) with an uncertainty by Monte Carlo over each clip\'s error, and the share over limit_kmh, plus a plain-English summary. ' +
+    'Clips that are not analysed or are not vehicles are listed as skipped with the reason. Free.',
+    inputSchema: {type: 'object', required: ['clip_ids'], properties: {clip_ids: {type: 'array', items: {type: 'string'}, description: 'Clip ids of analysed clips.'},
+      limit_kmh: {type: 'number', description: 'The speed limit in km/h. Default 30.', default: 30}}},
+    run: speed_survey},
 ];
 
 // Run a tool by name; failures that are the caller's to fix come back as {error}, never as a crash.

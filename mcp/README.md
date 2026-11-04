@@ -1,6 +1,6 @@
 # Reality Fork for coding agents
 
-Four tools let a coding agent say "measure the physics in this video and use the numbers in my code":
+Six tools let a coding agent say "measure the physics in this video and use the numbers in my code":
 
 | Tool | What it does | Cost |
 | --- | --- | --- |
@@ -8,6 +8,8 @@ Four tools let a coding agent say "measure the physics in this video and use the
 | `analyze_video` | Headline, answer, fitted law, measurements with sigma and units, assumptions, confidence for a video path or clip id | free if saved; a live run costs a few cents and needs `live=true` plus `RF_ALLOW_LIVE=1` |
 | `fork_motion` | Re-simulate under `g`, `drag`, `e`; summary, landing/bounce events, path every 0.1 s in metres | free |
 | `export_measurements` | The fitted law and parameters with sigmas, scale, frame range, fps, assumptions as JSON | free |
+| `braking_fork` | For a car clip: stopping distance, whether it stops before a person who steps out `hazard_distance_m` ahead (default 20 m) and by how many metres, or the impact speed, with error ranges; at the measured speed and at `speed_kmh`. States its assumptions (1.5 s reaction, 7 m/s² braking, both settable) | free |
+| `speed_survey` | Many car clips: speeds in km/h with sigma, mean, 85th-percentile speed with a Monte Carlo interval, share over `limit_kmh`, a plain-English summary; clips that are not analysed or not vehicles are skipped with the reason | free |
 
 Three front ends share `mcp/tools.mjs`: an MCP server over stdio (`mcp/server.mjs`, `npm run mcp`), a shell CLI (`mcp/cli.mjs`) and a skill (`mcp/SKILL.md`). The server needs no network and no API key for saved runs. Live runs are off unless the server's environment has `RF_ALLOW_LIVE=1` (and the Meta key configured as for the web app; the budget cap is `RF_BUDGET_USD`).
 
@@ -59,6 +61,8 @@ node mcp/cli.mjs list
 node mcp/cli.mjs analyze synthetic:throw
 node mcp/cli.mjs fork synthetic:throw --g moon
 node mcp/cli.mjs export synthetic:throw
+RF_EXTRA_RUNS=test/fixtures/vehicle-runs.json node mcp/cli.mjs brake fixture:car47 --speed 30   # hand-built car runs, no video needed
+RF_EXTRA_RUNS=test/fixtures/vehicle-runs.json node mcp/cli.mjs survey fixture:car47 fixture:car28 fixture:car38 --limit 30
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | node mcp/server.mjs
 ```
-Tests: `node --test test/mcp.test.mjs` (no network).
+`RF_EXTRA_RUNS` names a JSON file of runs (an array, each with its `clip` id) the vehicle tools read instead of `cache/runs`; the tests use it. Tests: `node --test test/mcp.test.mjs test/braking.test.mjs` (no network).

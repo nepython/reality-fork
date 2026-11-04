@@ -190,3 +190,5 @@ figcaption { font-size: 12px; color: var(--muted); display: flex; gap: 14px; fle
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; max-width: min(560px, calc(100vw - 32px));
   background: var(--panel2); border: 1px solid var(--warn); color: var(--text); padding: 12px 16px; border-radius: 10px;
   font-size: 14px; line-height: 1.4; box-shadow: 0 8px 30px rgba(0, 0, 0, .45); cursor: pointer; }
+.cross-hint { margin-top: 8px; font: 12px var(--mono); color: var(--muted); }
+.meas-row .kmh { color: var(--muted); }
