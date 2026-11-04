@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="fork.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 30V17M16 17C16 10 7 9 7 2M16 17c0-7 9-8 9-15' stroke='%2300c8ff' stroke-width='3.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -24,53 +25,72 @@
   </div>
 </header>
 
-<section class="rail" aria-label="Clips">
-  <div id="clips" class="clips"></div>
-</section>
-
 <main class="grid">
   <section class="stage-col">
-    <div class="stage" id="stage">
-      <video id="video" playsinline muted preload="auto" crossorigin="anonymous"></video>
-      <canvas id="overlay"></canvas>
-      <div class="stage-badge" id="stageBadge" hidden></div>
-      <div class="empty" id="stageEmpty"><div><b>Pick a clip above, or drop your own video here.</b><br>
-        <span class="muted">A few seconds is plenty. Keep the camera still and the motion side-on; something of known size in shot helps.</span></div></div>
+    <div class="stage-wrap">
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted preload="auto" crossorigin="anonymous"></video>
+        <canvas id="overlay"></canvas>
+        <div class="stage-badge" id="stageBadge" hidden></div>
+        <button type="button" id="menuBtn" class="menu-btn" hidden aria-label="Choose another clip" aria-expanded="false" aria-controls="chooser" data-tip="Choose another clip or upload your own" data-tip-side="right">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <div class="chooser" id="chooser" role="dialog" aria-label="Choose a clip">
+          <p class="chooser-lead">Pick a clip, or drop your own video here. <span class="muted">A few seconds is plenty: keep the camera still and the motion side-on, with something of known size in shot.</span></p>
+          <div class="chooser-row"><div id="clips" class="clips"></div><div id="clipSide" class="clip-side"></div></div>
+        </div>
+        <div class="cross-hint" id="crossHint" hidden>Click the road to move the crossing</div>
+        <div class="forkover" id="forkOver" role="dialog" aria-label="Fork reality" hidden>
+          <div class="forkover-head">
+            <span class="label">Reality Fork</span><span class="muted">Replay this clip under other physics</span>
+            <button type="button" id="forkClose" class="icon small" aria-label="Close the fork options" data-tip="Close (Esc)">&times;</button>
+          </div>
+          <div id="forkMenu" class="forkmenu-host"></div>
+        </div>
+        <div class="forkactive" id="forkActive" hidden>
+          <span class="fa-name"><span class="label">Fork</span> <b id="forkName"></b></span>
+          <span id="forkSummary" class="fork-summary" role="status"></span>
+          <button type="button" id="realityBtn" class="pillbtn" data-tip="Go back to the footage as it was filmed">Reality</button>
+          <button type="button" class="pillbtn save" id="saveClip" hidden data-tip="Play the fork from the start and download it as a video">Save this fork as a clip</button>
+          <label class="restyle" data-tip="Muse Image repaints the footage as the Moon, Mars or Jupiter for gravity forks"><input type="checkbox" id="restyle"> Repaint the world with Muse Image</label>
+        </div>
+      </div>
+      <button type="button" id="forkBtn" class="fork-pill" hidden aria-expanded="false" aria-controls="forkOver" data-tip="Click to view: replay this clip under other physics" data-tip-side="right">Reality Fork</button>
     </div>
     <div class="transport">
-      <button id="play" class="icon" title="Play / pause" aria-label="Play">▶</button>
-      <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Frame">
-      <span id="clock" class="mono">0.00 s</span>
+      <button id="play" class="icon" aria-label="Play" data-tip="Play / pause">▶</button>
+      <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Frame" data-tip="Drag to step through the clip frame by frame">
+      <span id="clock" class="mono" data-tip="Time in the clip">0.00 s</span>
       <div class="toggles">
-        <label><input type="checkbox" id="showMask" checked> masks</label>
-        <label><input type="checkbox" id="showPath" checked> path</label>
-        <label><input type="checkbox" id="showLaw" checked> law</label>
+        <label data-tip="Show SAM 3.1's pixel masks over the tracked object"><input type="checkbox" id="showMask" checked> masks</label>
+        <label data-tip="Show the object's measured path"><input type="checkbox" id="showPath" checked> path</label>
+        <label data-tip="Show the fitted law of motion over the footage"><input type="checkbox" id="showLaw" checked> law</label>
       </div>
     </div>
-    <div class="forkbar" id="forkbar" hidden>
-      <div class="forkbar-head"><span class="label">Fork reality</span><span id="forkSummary" class="fork-summary"></span></div>
-      <div class="forks" id="forks"></div>
-      <div class="cross-hint" id="crossHint" hidden>Click the road on the video to move the crossing.</div>
-      <div class="fork-foot">
-        <label class="restyle"><input type="checkbox" id="restyle"> repaint the world with Muse Image</label>
-        <button class="save" id="saveClip" hidden title="Play the fork from the start and download it as a video">Save this fork as a clip</button>
-      </div>
-    </div>
-    <figure class="plot-wrap" id="plotWrap" hidden>
+    <figure class="plot-wrap idle" id="plotWrap">
       <svg id="plot" role="img" aria-label="Measured motion and fitted law"></svg>
+      <p class="plot-idle muted">The measured motion and the fitted law appear here after a run.</p>
       <figcaption id="plotCaption"></figcaption>
     </figure>
   </section>
 
   <aside class="chat" id="chat" aria-label="Lab chat">
-    <div class="chat-head"><span>Lab chat</span><span id="nbState" class="muted"></span></div>
+    <div class="chat-head">
+      <span class="chat-title">Lab chat
+        <button type="button" id="infoBtn" class="info-btn" aria-label="How the lab works" aria-expanded="false" aria-controls="infoPop" data-tip="How the lab works">i</button>
+      </span>
+      <span id="nbState" class="muted"></span>
+    </div>
+    <div class="info-pop" id="infoPop" role="dialog" aria-label="How the lab works" hidden></div>
     <ol id="steps" class="msgs" aria-live="polite" aria-relevant="additions"></ol>
     <div class="composer-wrap">
-      <button type="button" id="skip" class="skip" hidden>Skip to results</button>
+      <button type="button" id="skip" class="skip" hidden data-tip="Jump to the finished results">Skip to results</button>
       <form id="ask" class="ask">
-        <input id="question" type="text" placeholder="Ask about the motion… e.g. what is gravity here?" autocomplete="off" aria-label="Your question">
-        <button type="button" id="mic" class="icon" title="Ask by voice (Muse Voice Transcribe)" aria-label="Ask by voice">🎙</button>
-        <button type="submit" id="run" class="primary">Run the lab</button>
+        <input id="question" type="text" placeholder="Ask any physics-related question about the clip" autocomplete="off" aria-label="Your question">
+        <button type="button" id="mic" class="icon mic" aria-label="Ask by voice" aria-pressed="false" data-tip="Ask by voice (Muse Voice Transcribe)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4"/><path d="M8 6v12"/><path d="M12 3v18"/><path d="M16 7v10"/><path d="M20 10v4"/></svg>
+        </button>
+        <button type="submit" id="run" class="primary" data-tip="Track, measure and fit the motion (an empty box asks the clip's own question)">Run the lab</button>
       </form>
     </div>
   </aside>
@@ -79,7 +99,7 @@
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <footer class="foot">
   <span>Built for the Meta Global AI Developer Hackathon, Oct–Nov 2026.</span>
-  <span id="credit" class="muted"></span>
+  <span id="credit" class="credit" tabindex="0"></span>
 </footer>
 
 <input type="file" id="file" accept="video/*" hidden>

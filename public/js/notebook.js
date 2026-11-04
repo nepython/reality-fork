@@ -18,6 +18,20 @@ export const TOOL = {
 };
 export const MODEL_NAME = {'constant-velocity': 'constant velocity', projectile: 'free flight', 'projectile-drag': 'flight with air drag',
   bounce: 'bouncing', pendulum: 'pendulum', incline: 'down a slope', oscillator: 'oscillation'};
+// Tooltips of the step indicator for each tool the agent calls: [in progress, done].
+const STEP = {
+  track_objects: ['SAM 3.1 is tracking the object in every frame', 'SAM 3.1 tracked the object in every frame'],
+  set_scale: ['The lab is setting the scale from an object of known size', 'The lab set the scale from an object of known size'],
+  fit_motion: ['The lab is fitting and ranking laws of motion', 'The lab fitted and ranked the laws of motion'],
+  check_overlay: ['The lab is checking its law against the footage', 'The lab checked its law against the footage'],
+  final_report: ['Muse Spark is writing the report', 'Muse Spark wrote the report'],
+};
+export const STEPS = {
+  watch: ['Muse Spark is watching the clip', 'Muse Spark watched the clip'],
+  say: ['Muse Spark is explaining its next step', 'Muse Spark explained its next step'],
+  report: ['Muse Spark is writing the report', 'Muse Spark wrote the report with error bars'],
+  fork: ['The lab is preparing the fork', 'The lab prepared the fork'],
+};
 const WHO = {spark: 'Muse Spark', sam: 'SAM 3.1', lab: 'Lab', image: 'Muse Image', err: 'Problem'};
 // Runs saved before lib/agent.mjs filtered them can still hold markup or the stray chat-product line.
 export const strayLine = t => /<[a-z]+:function_calls|<invoke name=|feedback on this answer|type it here/i.test(t);
@@ -32,21 +46,23 @@ export function keyValue(m) {
 }
 
 export class Notebook {
-  constructor({list, state, panel}) { Object.assign(this, {list, state, panel}); }
+  constructor({list, state, panel}) { Object.assign(this, {list, state, panel}); this.open = new Set(); }
 
-  clear(note = '') { this.list.innerHTML = ''; this.state.textContent = note; this.welcome(); }
+  clear(note = '') { this.list.innerHTML = ''; this.open.clear(); this.state.textContent = note; this.welcome(); }
 
-  // The empty chat says what a run will do, as the assistant's first message.
-  welcome() {
-    this.msg('spark', `Ask about the motion in the clip, then press <b>Run the lab</b>. Here is what happens:
+  // What a run does. It is the chat's first message while the chat is empty and, from the first question on, lives
+  // behind the info button (app.js shows the same text in a popover).
+  static introHtml() {
+    return `Ask about the motion in the clip, then press <b>Run the lab</b>. Here is what happens:
       <ol class="intro">
         <li><span class="chip spark">Muse Spark</span> watches your clip and plans the experiment: what moves, what sets the scale.</li>
         <li><span class="chip sam">SAM 3.1</span> follows the object through every frame, pixel-accurate, giving its path to a fraction of a pixel.</li>
         <li><b>Laws are fitted and ranked</b>: free flight, drag, bouncing, pendulum, slope, spring. Every number gets an error bar.</li>
         <li><b>The agent checks itself</b>: it draws its law over the real frames, looks, and fixes what doesn't match.</li>
         <li><span class="chip image">Muse Image</span> <b>Fork reality</b>: replay your footage on the Moon, without air, or bouncier.</li>
-      </ol>`, {intro: true});
+      </ol>`;
   }
+  welcome() { this.msg('spark', Notebook.introHtml(), {intro: true}); }
 
   scroll() { this.list.scrollTop = this.list.scrollHeight; }
 
@@ -55,26 +71,45 @@ export class Notebook {
     li.className = 'msg user';
     li.innerHTML = '<div class="bubble"></div>';
     li.firstChild.textContent = text;
-    this.list.querySelector('.intro')?.closest('.msg')?.classList.add('old');
+    this.list.querySelector('.intro-msg')?.remove();
+    this.finishAll();
     this.list.append(li); this.scroll();
     return li;
   }
 
-  // An assistant message with a header chip naming who acts; `busy` adds a spinner until settle().
-  msg(who, html = '', {busy = false, intro = false} = {}) {
+  // An assistant message with a header chip naming who acts. At its left sits a step indicator: a ring while the beat is
+  // in progress, a tick once it is done. `step` is [while working, when done] for its tooltip; `done` skips the ring.
+  // A beat ends when the director completes it (complete), or, for a message nobody tracks, when the next message
+  // begins or the run finishes (finishAll). `busy` adds a spinner until settle().
+  msg(who, html = '', {busy = false, intro = false, step, done = false} = {}) {
     const li = document.createElement('li');
     li.className = 'msg assistant' + (intro ? ' intro-msg' : '');
-    li.innerHTML = `<div class="who"><span class="chip ${who === 'lab' ? 'lab' : who === 'err' ? 'err' : who}">${WHO[who] || who}</span>${busy ? '<i class="spin"></i>' : ''}</div><div class="body">${html}</div>`;
+    li.innerHTML = `${intro ? '' : '<span class="step" tabindex="0" role="img"></span>'}<div class="who"><span class="chip ${who === 'lab' ? 'lab' : who === 'err' ? 'err' : who}">${WHO[who] || who}</span>${busy ? '<i class="spin"></i>' : ''}</div><div class="body">${html}</div>`;
+    if (!intro) {
+      const name = WHO[who] || who;
+      li.stepText = step || [`${name} is working on this step`, `${name} finished this step`];
+      this.finishAll();
+      this.mark(li, done || who === 'err' ? 'done' : 'doing');
+      if (!done && who !== 'err') this.open.add(li);
+    }
     this.list.append(li); this.scroll();
     return li;
   }
+  mark(li, state) {
+    const el = li?.querySelector('.step'); if (!el) return;
+    const text = li.stepText[state === 'done' ? 1 : 0];
+    el.className = 'step ' + state; el.dataset.tip = text; el.dataset.tipSide = 'right'; el.setAttribute('aria-label', text);
+    if (state === 'done') this.open.delete(li);
+  }
+  complete(li) { if (li) this.mark(li, 'done'); }
+  finishAll() { for (const li of [...this.open]) this.mark(li, 'done'); }
   settle(li) { li?.querySelector('.spin')?.remove(); }
   body(li) { return li.querySelector('.body'); }
   add(li, html) { li.querySelector('.body').insertAdjacentHTML('beforeend', html); this.scroll(); }
 
   toolCall(name, args) {
     const [who, text] = (TOOL[name] || (() => ['lab', esc(name)]))(args || {});
-    const li = this.msg(who, text, {busy: true});
+    const li = this.msg(who, text, {busy: true, step: STEP[name]});
     if (name === 'track_objects') this.add(li, '<div class="bar"><i></i></div>');
     return li;
   }
@@ -115,6 +150,6 @@ export class Notebook {
     }).join('');
     return this.msg('spark', `<div class="report"><div class="rep-head"><h2>${esc(rep.headline)}</h2><span class="conf ${esc(rep.confidence)}">${esc(rep.confidence)} confidence</span></div>
       <p>${esc(rep.answer)}</p>${rows}
-      ${rep.assumptions?.length ? `<ul class="assume">${rep.assumptions.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}</div>`);
+      ${rep.assumptions?.length ? `<ul class="assume">${rep.assumptions.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}</div>`, {step: STEPS.report});
   }
 }

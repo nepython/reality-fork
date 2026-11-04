@@ -2,7 +2,7 @@
 // run in bursts after long waits) go into a queue; each becomes a beat, a chat message plus an act on the stage, held for a
 // minimum dwell so that no change flashes by. Falling far behind a live run shortens the dwells; "Skip to results" flushes.
 import {fetchMasks} from './masks.js';
-import {esc, num, MODEL_NAME, keyValue, strayLine} from './notebook.js';
+import {esc, num, MODEL_NAME, keyValue, strayLine, STEPS} from './notebook.js';
 
 const CANCEL = Symbol('cancel');
 // Milliseconds. A normal beat is held ~2.5 s; the acts the eye must read (SAM's sweep, the fit drawing) get ~3 s.
@@ -115,7 +115,7 @@ class Run {
       return () => { clearTimeout(t); video.removeEventListener('ended', done); video.pause(); };
     }).finally(() => { video.pause(); video.playbackRate = 1; });
   }
-  settleWatch() { this.nb.settle(this.watchLi); this.watchLi = null; }
+  settleWatch() { this.nb.settle(this.watchLi); this.nb.complete(this.watchLi); this.watchLi = null; }
 
   // ---- beats --------------------------------------------------------------------------------------------------
   async beat(ev) {
@@ -137,7 +137,7 @@ class Run {
 
   // Spark looks at the clip: it plays once under a light sweep and a soft vignette.
   async watch(since) {
-    this.watchLi = this.nb.msg('spark', 'Muse Spark is watching the clip…', {busy: true});
+    this.watchLi = this.nb.msg('spark', 'Muse Spark is watching the clip…', {busy: true, step: STEPS.watch});
     const {stage} = this, ms = this.d(T.watch);
     this.say('Muse Spark watching');
     stage.scene = (s, f) => {
@@ -157,9 +157,10 @@ class Run {
   async spark(ev, since) {
     if (strayLine(ev.text)) return;
     this.settleWatch();
-    const li = this.nb.msg('spark', '<span class="say"></span>');
+    const li = this.nb.msg('spark', '<span class="say"></span>', {step: STEPS.say});
     await this.type(li.querySelector('.say'), ev.text);
     await this.hold(since, T.sayBase + T.sayPerChar * ev.text.length);
+    this.nb.complete(li);
   }
 
   async call(ev, since) {
@@ -173,11 +174,12 @@ class Run {
     const li = this.pending, r = ev.result, nb = this.nb; this.pending = null;
     nb.settle(li);
     if (!li) return;
-    if (r?.error) return nb.warn(li, r.error);
+    if (r?.error) { nb.warn(li, r.error); return nb.complete(li); }
     if (ev.name === 'track_objects') nb.trackTable(li, r);
     else if (ev.name === 'set_scale') nb.scaleLine(li, r);
     else if (ev.name === 'fit_motion') await this.fit(li, r);
     else if (ev.name === 'check_overlay') nb.checkLine(li, r);
+    nb.complete(li);
   }
 
   // SAM 3.1: the clip sweeps by with the object's mask filled and outlined, and its centre left behind as a dot per frame.
@@ -330,7 +332,7 @@ class Run {
     await this.alive();
   }
   async revealForks(instant) {
-    this.nb.msg('lab', 'Now fork reality: try one of the buttons under the video, and the clip replays with the physics changed.');
+    this.nb.msg('lab', 'Now fork reality: press the shimmering Reality Fork button on the video, pick a world, and the clip replays with the physics changed.', {step: ['The lab is inviting you to fork reality', 'The lab invited you to fork reality']});
     this.hooks.reveal(instant);
     if (!instant) await this.sleep(500);
   }

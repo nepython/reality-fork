@@ -1,5 +1,6 @@
 import {Stage} from './stage.js';
-import {Notebook} from './notebook.js';
+import {Notebook, STEPS} from './notebook.js';
+import {refreshTip} from './tips.js';
 import {drawPlot} from './plot.js';
 import {Voice} from './voice.js';
 import {Director} from './director.js';
@@ -15,27 +16,28 @@ const stage = new Stage({video: $('video'), canvas: $('overlay'), badge: $('stag
   if (state.fit) plot(f);
 }});
 const nb = new Notebook({list: $('steps'), state: $('nbState')});
+nb.clear();
 // The director paces a run's events into chat messages and acts on the stage; these are its ways into the app.
 const director = new Director({stage, nb, video: $('video'), badge: $('stageBadge'), hooks: {
   info: () => state.info,
   final: finalFit,
   finalize: (clip, report) => loadAnalysis(clip, report),
-  reveal: instant => { state.reveal = true; if (state.forksReady) showForkbar(instant); },
+  reveal: instant => { state.reveal = true; if (state.forksReady) showForkBtn(); },
   busy: on => { $('skip').hidden = !on; },
-  finished: (ev, clip) => { $('run').disabled = false; $('skip').hidden = true; if (ev.type === 'done') markAnalysed(clip); },
+  finished: (ev, clip) => { nb.finishAll(); $('run').disabled = false; $('skip').hidden = true; if (ev.type === 'done') markAnalysed(clip); },
 }});
 
 // ---- clips -----------------------------------------------------------------------------------------------------
 async function loadClips() {
   state.clips = await (await fetch('/api/clips')).json();
-  const box = $('clips');
-  box.innerHTML = '';
+  const box = $('clips'), side = $('clipSide');
+  box.innerHTML = ''; side.innerHTML = '';
   // Real footage first, then the upload tile; the synthetic test scenes sit behind a toggle so judges meet real clips.
   const tile = c => {
     const b = document.createElement('button');
-    b.className = 'clip'; b.dataset.id = c.id;
+    b.className = 'clip'; b.dataset.id = c.id; b.dataset.tip = `Use this clip: ${c.title}`;
     b.innerHTML = `<div class="thumb">${c.poster ? `<img src="${c.poster}" alt="" style="width:100%;height:100%;object-fit:cover">` : `<video src="${c.url}#t=0.2" muted preload="metadata"></video>`}</div>
-      <div class="meta"><div class="title"></div><div class="kind">${c.analysed ? '<i class="dot" title="analysed"></i>' : ''}<span></span></div></div>`;
+      <div class="meta"><div class="title"></div><div class="kind">${c.analysed ? '<i class="dot"></i>' : ''}<span></span></div></div>`;
     b.querySelector('.title').textContent = c.title;
     b.querySelector('.kind span').textContent = c.motion || (c.synthetic ? 'test scene' : '');
     b.onclick = () => select(c);
@@ -43,34 +45,71 @@ async function loadClips() {
   };
   for (const c of state.clips.filter(c => !c.synthetic)) box.append(tile(c));
   const up = document.createElement('button');
-  up.className = 'clip upload'; up.innerHTML = '<span><b>+</b>Upload a clip</span>';
+  up.className = 'clip upload'; up.innerHTML = '<span><b>+</b>Upload a clip</span>'; up.dataset.tip = 'Upload your own video (under 80 MB; a few seconds is plenty)';
   up.onclick = () => $('file').click();
-  box.append(up);
+  side.append(up);
   const synth = state.clips.filter(c => c.synthetic);
   if (!synth.length) return;
   const tog = document.createElement('button');
   tog.className = 'clip upload testToggle'; tog.setAttribute('aria-expanded', 'false'); tog.setAttribute('aria-controls', 'clips');
+  tog.dataset.tip = 'Rendered scenes with exactly known physics, for checking the lab';
   const tiles = synth.map(tile);
   tiles.forEach(b => { b.hidden = true; b.classList.add('test'); });
-  const label = open => `<span><b>${open ? '\u2212' : '+'}</b>${open ? 'Hide' : 'Test scenes'} (${synth.length})</span>`;
+  const label = open => `<span>${open ? 'Hide test scenes' : 'Test scenes'} (${synth.length}) ${open ? '\u2212' : '>'}</span>`;
   tog.innerHTML = label(false);
   tog.onclick = () => {
     const open = tog.getAttribute('aria-expanded') !== 'true';
     tog.setAttribute('aria-expanded', String(open)); tog.innerHTML = label(open);
     tiles.forEach(b => b.hidden = !open);
   };
-  box.append(tog, ...tiles);
+  side.append(tog); box.append(...tiles);
 }
+
+// ---- the chooser: inside the video frame, folded into the menu button once a clip is chosen -------------------------
+const chooser = $('chooser'), menuBtn = $('menuBtn');
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+// FLIP: the chooser's full-frame box and the menu button's box are the two ends; a shrink and fade between them.
+function morph(toIcon, ms) {
+  if (calm()) return Promise.resolve();
+  const r = chooser.getBoundingClientRect(), t = menuBtn.getBoundingClientRect();
+  const to = `translate(${t.left - r.left}px, ${t.top - r.top}px) scale(${t.width / r.width}, ${t.height / r.height})`;
+  const anim = chooser.animate([{transform: 'none', opacity: 1}, {opacity: 0.85, offset: 0.55}, {transform: to, opacity: 0}],
+    {duration: ms, easing: 'cubic-bezier(.4, 0, .2, 1)', direction: toIcon ? 'normal' : 'reverse', fill: 'both'});
+  return anim.finished.catch(() => {}).then(() => anim.cancel());
+}
+let chooserBusy = false;
+const chooserShut = () => chooser.classList.contains('shut');
+async function closeChooser({focus = true} = {}) {
+  if (chooserShut() || chooserBusy) return;
+  chooserBusy = true;
+  chooser.classList.add('over');
+  menuBtn.hidden = false; menuBtn.setAttribute('aria-expanded', 'false');
+  await morph(true, 520);
+  chooser.classList.add('shut'); chooserBusy = false;
+  if (focus) menuBtn.focus();
+}
+async function openChooser() {
+  if (!chooserShut() || chooserBusy) return;
+  chooserBusy = true;
+  closeForkMenu();
+  chooser.classList.remove('shut'); menuBtn.setAttribute('aria-expanded', 'true');
+  await morph(false, 380);
+  chooserBusy = false;
+  (chooser.querySelector('.clip.active') || chooser.querySelector('.clip'))?.focus();
+}
+menuBtn.onclick = () => chooserShut() ? openChooser() : closeChooser();
 
 async function select(c) {
   // A replay still streaming for the previous clip would otherwise land its notebook, overlays and forks on this one.
   state.es?.close(); state.es = null; $('run').disabled = false; $('skip').hidden = true;
   director.cancel();
-  state.clip = c; state.run = null; state.fit = null; state.fork = null; state.forksReady = false; state.reveal = false; $('saveClip').hidden = true;
+  state.clip = c; state.run = null; state.fit = null; state.forksReady = false; state.reveal = false;
+  resetFork(); setPlot(false);
   document.querySelectorAll('.clip').forEach(b => b.classList.toggle('active', b.dataset.id === c.id));
-  $('stageEmpty').hidden = true; $('forkbar').hidden = true; $('plotWrap').hidden = true; $('stageBadge').hidden = true;
-  $('credit').textContent = c.credit || '';
-  $('question').value = c.question || '';
+  $('stageBadge').hidden = true;
+  $('credit').textContent = c.credit || ''; $('credit').dataset.tip = c.credit || ''; $('credit').dataset.tipSide = 'top';
+  $('question').value = '';
+  closeChooser({focus: false});
   nb.clear(c.analysed ? 'analysed before: “Run the lab” replays it' : '');
   $('question').disabled = false;
   const run = await (await fetch(`/api/run?clip=${encodeURIComponent(c.id)}`)).json();
@@ -78,7 +117,6 @@ async function select(c) {
   state.info = run.info || await probeInBrowser(c.url);
   stage.load(c.url, state.info);
   $('scrub').max = state.info.frames - 1; $('scrub').value = 0;
-  if (run.report && c.question == null) $('question').value = run.question || '';
 }
 
 function probeInBrowser(url) {
@@ -92,18 +130,19 @@ function probeInBrowser(url) {
 // ---- running the lab -------------------------------------------------------------------------------------------
 function run(live = false) {
   if (!state.clip) return;
-  const clip = state.clip, q = $('question').value.trim();
-  nb.user(q || 'What physics is happening here? Measure it.');
+  const clip = state.clip, asked = $('question').value, q = asked.trim();
+  // An empty box asks the clip's own question (the server does the same, so a sample replays its saved run).
+  nb.user(q || clip.question || 'What physics is happening here? Measure it.');
+  $('question').value = '';
   $('run').disabled = true; $('skip').hidden = false;
-  stage.setFork(null);
-  state.fork = null; state.fit = null; state.forksReady = false; state.reveal = false;
-  $('forkbar').hidden = true; $('plotWrap').hidden = true; $('saveClip').hidden = true; $('forkSummary').textContent = '';
+  closeChooser({focus: false});
+  state.fit = null; state.forksReady = false; state.reveal = false;
+  resetFork(); setPlot(false);
   // The previous run's drawings go; the director draws this run's as its steps come.
   stage.setAnalysis({track: null, fitPath: null, masks: null, world: null, forkPath: null});
   nb.state.textContent = 'running…';
-  scrollChatIntoView();
   state.es?.close();
-  const dr = director.start(clip), es = state.es = new EventSource(`/api/analyze?clip=${encodeURIComponent(clip.id)}&q=${encodeURIComponent($('question').value)}${live ? '&live=1' : ''}`);
+  const dr = director.start(clip), es = state.es = new EventSource(`/api/analyze?clip=${encodeURIComponent(clip.id)}&q=${encodeURIComponent(asked)}${live ? '&live=1' : ''}`);
   es.onmessage = m => {
     if (state.es !== es) return;
     const ev = JSON.parse(m.data);
@@ -113,9 +152,6 @@ function run(live = false) {
   es.onerror = () => { if (state.es !== es) return; es.close(); if (!dr.finished) dr.push({type: 'error', message: 'The connection to the lab dropped.'}); };
 }
 $('skip').onclick = () => director.skip();
-
-// On a phone the chat sits below the stage: bring it under the pinned stage so the first message is seen.
-function scrollChatIntoView() { if (matchMedia('(max-width: 980px)').matches) $('chat').scrollIntoView({block: 'start', behavior: 'smooth'}); }
 
 function markAnalysed(clip) {
   const c = state.clips.find(x => x.id === clip.id); if (c) c.analysed = true;
@@ -138,7 +174,7 @@ async function loadAnalysis(clip, report) {
   state.axis = rep.fit?.model === 'pendulum' || rep.fit?.model === 'oscillator' && spread(state.fit.track, 1) > spread(state.fit.track, 2) ? 'x' : 'y';
   if (rep.fit?.model === 'pendulum') state.axis = 'x';
   stage.setAnalysis({track: state.fit.track, fitPath: fit.real, fps: state.info.fps, frames: state.info.frames, point: rep.fit?.point || 'centroid', ppm: rep.fit?.ppm});
-  $('plotWrap').hidden = false; plot(stage.frame);
+  setPlot(true); plot(stage.frame);
   // Compositing assets, fetched in the background: masks, the clean plate, the object's cut-out.
   const [masks, plate, sprite, spriteMeta] = await Promise.all([
     fetch(`/api/masks?clip=${id}&object=${encodeURIComponent(obj)}`).then(r => r.ok ? r.json() : null).then(async m => { if (!m) return null; const id = obj.split(':').pop(); return (await decodeMasks(m.text, [id]))[id]; }),
@@ -171,6 +207,9 @@ async function post(url, body) {
   return r.json();
 }
 
+// Until a run has a fit the plot's space shows a hint instead of an empty box, so the layout does not jump.
+const setPlot = on => $('plotWrap').classList.toggle('idle', !on);
+
 function plot(frame) {
   if (!state.fit?.ppm) return;
   // A car's fork is told in speed against time (reality's steady line against the fork's), not in position.
@@ -198,17 +237,36 @@ const CAR_PRESETS = [
   {label: 'Same, at 50 km/h', why: 'steps out 20 m ahead, 50 km/h', vehicle: {brake: true, speed_kmh: 50}},
 ];
 
+// What /api/fork is sent for a preset: one function for the menu's items and for fork() itself.
+function overridesFor(f) {
+  const overrides = {}; if (f.g) overrides.g = f.g; if (f.drag) overrides.drag = f.drag; if (f.e != null) overrides.e = f.e;
+  if (f.vehicle) {
+    if (f.vehicle.speed_kmh) overrides.speed_kmh = f.vehicle.speed_kmh;
+    if (f.vehicle.brake) overrides.brake = {hazard_px: Math.round(state.hazardPx), distance_m: 20};
+  }
+  return overrides;
+}
+
 function renderForks(rep) {
-  const box = $('forks'); box.innerHTML = '';
-  const model = rep.fit?.model;
+  state.rep = rep;
   state.vehicle = vehicleOf(rep); state.lastFork = null;
-  const hint = $('crossHint'); hint.hidden = !state.vehicle;
   if (state.vehicle) {
     // The crossing starts three quarters of the way across, in the direction the car travels; a click on the road moves it.
     state.hazardPx = state.info.width * (state.vehicle.dir > 0 ? 0.75 : 0.25);
     placeCrossing();
   } else stage.setAnalysis({crossing: null, road: null});
-  const fromAgent = (rep.forks || []).map(f => ({label: f.label, g: f.g > 0 ? f.g : undefined, drag: f.drag === 'none' ? 'none' : undefined, e: f.e >= 0 ? f.e : undefined, why: f.why, agent: true}));
+  // The director reveals the Reality Fork button when the report has been read; one loaded without a run shows at once.
+  state.forksReady = true;
+  if (state.reveal || !director.playing) showForkBtn();
+}
+
+// The presets that make sense for this clip, filtered as ever. Built when the menu opens, so that the hazard position
+// in the car presets is the current one.
+function forkItems() {
+  const rep = state.rep, model = rep.fit?.model;
+  // An agent fork that changes nothing (no g, drag or e) would replay reality, so it is not offered.
+  const fromAgent = (rep.forks || []).map(f => ({label: f.label, g: f.g > 0 ? f.g : undefined, drag: f.drag === 'none' ? 'none' : undefined, e: f.e >= 0 ? f.e : undefined, why: f.why, agent: true}))
+    .filter(f => f.g != null || f.drag || f.e != null);
   // A preset is left out when the agent already offers it, by name or by the same change under its own name
   // ("same throw on Moon" is the Moon preset; "vacuum flight" is No air).
   const seen = new Set(fromAgent.map(f => f.label.toLowerCase()));
@@ -220,51 +278,87 @@ function renderForks(rep) {
   const filmed = Number.isFinite(rep.filmed_g) ? rep.filmed_g : 9.81, home = p => p.g != null && Math.abs(p.g - filmed) < 0.05;
   const list = state.vehicle ? CAR_PRESETS.filter(p => !p.vehicle.speed_kmh || Math.abs(p.vehicle.speed_kmh - state.vehicle.kmh) > 2)
     : [...fromAgent, ...PRESETS.filter(p => !seen.has(p.label.toLowerCase()) && !sameAs(p) && !home(p) && (!p.models || p.models.includes(model)) && !(p.drag && model !== 'projectile-drag'))];
-  const real = document.createElement('button');
-  real.className = 'fork real active'; real.innerHTML = 'Reality<small>as filmed</small>';
-  real.onclick = () => {
-    activate(real); stage.setFork(null); state.fork = null; state.lastFork = null; $('saveClip').hidden = true; $('forkSummary').textContent = ''; $('stageBadge').hidden = true; plot(stage.frame);
-    nb.user('Reality'); nb.msg('lab', 'Back to the footage as it was filmed.');
-  };
-  box.append(real);
-  for (const f of list.slice(0, 7)) {
-    const b = document.createElement('button');
-    b.className = 'fork';
-    b.innerHTML = `${f.label}<small>${f.why ? f.why.slice(0, 44) : ''}</small>`;
-    b.title = f.why || '';
-    b.onclick = () => fork(f, b);
-    box.append(b);
+  return [{label: 'Reality', why: 'as filmed', real: true, overrides: {}}, ...list.slice(0, 7).map(f => ({...f, overrides: overridesFor(f)}))];
+}
+
+// The pill that invites a fork. It sits on the frame's left edge at mid-height, or higher or lower when the tracked
+// object passes there.
+function showForkBtn() {
+  const btn = $('forkBtn'); if (!btn.hidden) return;
+  placeForkBtn();
+  btn.hidden = false;
+  $('crossHint').hidden = !state.vehicle;
+}
+function placeForkBtn() {
+  const W = state.info.width, H = state.info.height, pts = state.fit?.track || [];
+  const busy = y => pts.some(p => p[1] < 0.3 * W && Math.abs(p[2] - y * H) < 0.22 * H);
+  $('forkBtn').style.top = ([0.5, 0.78, 0.22].find(y => !busy(y)) ?? 0.5) * 100 + '%';
+}
+
+async function openForkMenu() {
+  if (!state.rep || director.playing) return;
+  closeChooser({focus: false});
+  closeForkMenu();
+  const items = forkItems(), host = $('forkMenu'), clip = state.clip;
+  $('forkOver').hidden = false; $('forkBtn').setAttribute('aria-expanded', 'true');
+  const opts = {clipId: clip.id, info: state.info, plateUrl: `/api/plate?clip=${encodeURIComponent(clip.id)}`, realPath: stage.data.fitPath, active: state.fork?.label || 'Reality', onPick};
+  const gone = () => state.clip !== clip || $('forkOver').hidden;
+  try {
+    const {renderForkMenu} = await import('./forkmenu.js');
+    if (gone()) return;
+    state.menu = renderForkMenu(host, items, opts);
+  } catch {
+    // forkmenu.js is another module; until it exists (or if it fails to load) plain buttons do the job.
+    if (gone()) return;
+    host.innerHTML = '';
+    const row = document.createElement('div'); row.className = 'fork-fallback';
+    for (const it of items) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pillbtn';
+      b.textContent = it.label; b.dataset.tip = it.why || ''; if (it.label === opts.active) b.setAttribute('aria-current', 'true');
+      b.onclick = () => onPick(it); row.append(b);
+    }
+    host.append(row); state.menu = {destroy: () => { host.innerHTML = ''; }};
   }
-  // The director reveals the fork bar when the report has been read; a bar loaded without a run shows at once.
-  state.forksReady = true;
-  if (state.reveal || !director.playing) showForkbar(true);
+  host.querySelector('button, [tabindex]')?.focus();
 }
-
-// The fork bar appears, and for a moment glows, so the chat's invitation has something to point at.
-function showForkbar(instant) {
-  const bar = $('forkbar'); bar.hidden = false;
-  if (instant) return;
-  bar.classList.remove('nudge'); void bar.offsetWidth; bar.classList.add('nudge');
-  if (matchMedia('(max-width: 980px)').matches) bar.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+function closeForkMenu() {
+  if ($('forkOver').hidden) return;
+  $('forkOver').hidden = true; $('forkBtn').setAttribute('aria-expanded', 'false');
+  state.menu?.destroy?.(); state.menu = null;
 }
+function onPick(item) {
+  closeForkMenu();
+  $('forkBtn').focus();
+  if (item.real) goReality(); else fork(item);
+}
+$('forkBtn').onclick = () => $('forkOver').hidden ? openForkMenu() : closeForkMenu();
+$('forkClose').onclick = () => { closeForkMenu(); $('forkBtn').focus(); };
 
-function activate(b) { document.querySelectorAll('.fork').forEach(x => x.classList.toggle('active', x === b)); }
+// The in-frame bar while a fork plays: its name, the way back to the footage, save and repaint.
+function showBar(label) { $('forkName').textContent = label; $('forkActive').hidden = false; $('stage').classList.add('bar'); }
+function hideBar() { $('forkActive').hidden = true; $('stage').classList.remove('bar'); $('saveClip').hidden = true; $('forkSummary').textContent = ''; }
+// Everything a clip switch or a new run must put away.
+function resetFork() {
+  if (stage.data) stage.setFork(null);
+  state.fork = null; state.lastFork = null; state.rep = null;
+  closeForkMenu(); hideBar();
+  $('forkBtn').hidden = true; $('crossHint').hidden = true;
+}
+function goReality() {
+  stage.setFork(null); state.fork = null; state.lastFork = null; hideBar(); $('stageBadge').hidden = true; plot(stage.frame);
+  nb.user('Reality'); nb.msg('lab', 'Back to the footage as it was filmed.', {done: true});
+}
+$('realityBtn').onclick = () => { if (!director.playing) goReality(); };
 
-async function fork(f, button, moved = false) {
+async function fork(f, moved = false) {
   if (director.playing) return;
-  activate(button);
   nb.user(moved ? `${f.label} (crossing moved)` : f.label);
-  const overrides = {}; if (f.g) overrides.g = f.g; if (f.drag) overrides.drag = f.drag; if (f.e != null) overrides.e = f.e;
-  if (f.vehicle) {
-    state.lastFork = {f, button};
-    if (f.vehicle.speed_kmh) overrides.speed_kmh = f.vehicle.speed_kmh;
-    if (f.vehicle.brake) overrides.brake = {hazard_px: Math.round(state.hazardPx), distance_m: 20};
-  }
+  if (f.vehicle) state.lastFork = {f};
+  showBar(f.label);
   const clip = state.clip, id = encodeURIComponent(clip.id);
-  const res = await post(`/api/fork?clip=${id}`, {overrides});
+  const res = await post(`/api/fork?clip=${id}`, {overrides: overridesFor(f)});
   if (state.clip !== clip) return;
-  if (res.error) { $('forkSummary').textContent = res.error; nb.msg('err', res.error.replace(/</g, '&lt;')); return; }
-  $('forkSummary').textContent = res.summary || '';
+  if (res.error) { hideBar(); nb.msg('err', res.error.replace(/</g, '&lt;')); return; }
 
   let world = null;
   // Picked by gravity, so the agent's own forks ("same throw on the Moon") get the world too. Only over a steady plate:
@@ -274,12 +368,12 @@ async function fork(f, button, moved = false) {
     $('forkSummary').textContent = 'Muse Image is repainting the scene…';
     const paint = nb.msg('image', `Repainting the scene as ${name === 'mars' ? 'Mars' : name === 'jupiter' ? 'Jupiter' : 'the Moon'}…`, {busy: true});
     const r = await post(`/api/restyle?clip=${id}`, {world: name});
-    nb.settle(paint);
+    nb.settle(paint); nb.complete(paint);
     if (r.url) world = await image(r.url);
     if (state.clip !== clip) return;
-    $('forkSummary').textContent = res.summary || '';
+    $('forkSummary').textContent = '';
   }
-  nb.body(nb.msg('lab', '')).textContent = res.summary || `Replaying with ${f.why || f.label}.`;
+  nb.body(nb.msg('lab', '', {done: true, step: STEPS.fork})).textContent = res.summary || `Replaying with ${f.why || f.label}.`;
   stage.setAnalysis({world});
   state.fork = {label: f.label, res};
   if (res.hazard) stage.setAnalysis({crossing: {x: res.hazard.x_px, y: res.hazard.y_px}});
@@ -327,13 +421,13 @@ function placeCrossing() {
 }
 // Click the road on the video to move where the person steps out; an active braking fork is run again for the new spot.
 $('overlay').addEventListener('click', e => {
-  if (!state.vehicle || director.playing || !state.forksReady) return;
+  if (!state.vehicle || director.playing || !state.forksReady || !$('forkOver').hidden || !chooserShut()) return;
   const r = $('overlay').getBoundingClientRect(), W = state.info.width;
   const x = stage.toFrameX((e.clientX - r.left) * W / r.width);
   state.hazardPx = Math.max(0.08 * W, Math.min(0.97 * W, x));
   placeCrossing();
   const last = state.lastFork;
-  if (last?.f.vehicle.brake && state.fork) fork(last.f, last.button, true);
+  if (last?.f.vehicle.brake && state.fork) fork(last.f, true);
 });
 
 // ---- transport, upload, voice ----------------------------------------------------------------------------------
@@ -374,13 +468,21 @@ async function upload(file) {
 
 const voice = new Voice();
 let recording = false;
+// The waveform button animates while recording (static highlight under reduced motion); its tooltip follows.
+function micState() {
+  const m = $('mic');
+  m.classList.toggle('rec', recording); m.setAttribute('aria-pressed', String(recording));
+  m.dataset.tip = recording ? 'Recording. Click to stop and ask' : 'Ask by voice (Muse Voice Transcribe)';
+  m.setAttribute('aria-label', recording ? 'Stop recording' : 'Ask by voice');
+  refreshTip(m);
+}
 $('mic').onclick = async () => {
   if (!recording) {
     try { await voice.start(); } catch { return alert('Microphone not available.'); }
-    recording = true; $('mic').classList.add('rec'); $('mic').textContent = '■';
+    recording = true; micState();
     return;
   }
-  recording = false; $('mic').classList.remove('rec'); $('mic').textContent = '🎙';
+  recording = false; micState();
   const wav = await voice.stop();
   $('question').value = 'Transcribing…';
   const r = await fetch('/api/transcribe', {method: 'POST', body: wav});
@@ -389,17 +491,28 @@ $('mic').onclick = async () => {
   if (j.text && state.clip) run();
 };
 
-// The chat is as tall as what is left of the viewport below it: all of it once the page has scrolled to where it sticks.
-const sizeChat = () => {
-  const chat = $('chat'), phone = matchMedia('(max-width: 980px)').matches;
-  if (phone) return chat.style.removeProperty('--chat-h');
-  chat.style.setProperty('--chat-h', Math.max(420, innerHeight - Math.max(12, document.querySelector('.grid').getBoundingClientRect().top) - 12) + 'px');
+// ---- info popover, Esc, layout ---------------------------------------------------------------------------------
+const infoPop = $('infoPop'), infoBtn = $('infoBtn');
+infoPop.innerHTML = Notebook.introHtml();
+const setInfo = on => { infoPop.hidden = !on; infoBtn.setAttribute('aria-expanded', String(on)); };
+infoBtn.onclick = () => setInfo(infoPop.hidden);
+document.addEventListener('pointerdown', e => { if (!infoPop.hidden && !infoPop.contains(e.target) && !infoBtn.contains(e.target)) setInfo(false); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!infoPop.hidden) { setInfo(false); infoBtn.focus(); }
+  else if (!$('forkOver').hidden) { closeForkMenu(); $('forkBtn').focus(); }
+  else if (!chooserShut() && chooser.classList.contains('over')) closeChooser();
+});
+
+// The video frame is as tall as its width asks, but never so tall that the plot under it loses its room.
+const sizeStage = () => {
+  const col = document.querySelector('.stage-col');
+  if (matchMedia('(max-width: 980px)').matches) return $('stage').style.removeProperty('--stage-max');
+  $('stage').style.setProperty('--stage-max', Math.max(200, col.clientHeight - document.querySelector('.transport').offsetHeight - 170 - 20) + 'px');
 };
-addEventListener('scroll', sizeChat, {passive: true});
-addEventListener('resize', () => { sizeChat(); state.fit && plot(stage.frame); });
-// The rail and header change height as the clips load, which moves the chat's top.
-new ResizeObserver(sizeChat).observe(document.querySelector('.rail'));
-sizeChat();
+addEventListener('resize', () => { sizeStage(); state.fit && plot(stage.frame); });
+new ResizeObserver(() => { sizeStage(); state.fit && plot(stage.frame); }).observe(document.querySelector('.stage-col'));
+sizeStage();
 loadClips();
 // After the hackathon's judging the server stops paid calls; say so once, where it is seen.
 fetch('/api/status').then(r => r.json()).then(st => {
