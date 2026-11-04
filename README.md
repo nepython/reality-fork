@@ -111,9 +111,10 @@ a disk cache, so replaying a finished run costs nothing. A typical live analysis
 analysis needs `live=true` and the server started with `RF_ALLOW_LIVE=1`. Setup for each agent is in
 [mcp/README.md](mcp/README.md).
 
-**Deploy.** `docker build -t reality-fork . && docker run -p 7860:7860 -e MODEL_API_KEY=... reality-fork`. A fresh
+**Deploy.** On Render's free tier: the repo's `render.yaml` is a blueprint (Docker, free plan); enter `MODEL_API_KEY` in
+the dashboard. Anywhere else: `docker build -t reality-fork . && docker run -p 7860:7860 -e MODEL_API_KEY=... reality-fork`. A fresh
 container seeds its cache from `demo/` (the samples' runs and SAM results, exported by `node scripts/export-demo.mjs`),
-so the samples replay for free; live runs are limited per visitor (`RF_LIVE_PER_HOUR`, default 6), by the cap, and by an
+so the samples replay for free (with their clean plates and cut-outs prebuilt, so a cold start serves them at once); live runs are limited per visitor (`RF_LIVE_PER_HOUR`, default 6) and for everyone together (`RF_LIVE_GLOBAL_PER_HOUR`, default 20), by the cap, and by an
 end date (`RF_LIVE_UNTIL`, set to the end of the hackathon's judging), after which visitors see a notice and replays only.
 
 ## Limits

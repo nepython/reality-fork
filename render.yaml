@@ -1,0 +1,16 @@
+# Render blueprint (free web service, Docker). The Meta API key is entered in Render's dashboard, never committed.
+services:
+  - type: web
+    name: reality-fork
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: MODEL_API_KEY
+        sync: false
+      - key: RF_BUDGET_USD
+        value: "100"
+      - key: RF_LIVE_UNTIL
+        value: "2026-11-10T08:00:00Z"

@@ -23,11 +23,14 @@ const LIVE_UNTIL = Date.parse(process.env.RF_LIVE_UNTIL || '');
 const liveOpen = () => !Number.isFinite(LIVE_UNTIL) || Date.now() < LIVE_UNTIL;
 const LIVE_CLOSED = 'Live analysis was open during the hackathon judging and has now ended; the sample clips still replay their saved runs.';
 
+// Per visitor, and for everyone together: on a host that restarts with an empty disk the spending ledger starts again
+// from zero, so an hourly ceiling across all visitors bounds what a restarted instance can spend.
+const GLOBAL_PER_HOUR = {live: Number(process.env.RF_LIVE_GLOBAL_PER_HOUR || 20), restyle: 30, voice: 120};
 function allowLive(req, kind = 'live', perHour = LIVE_PER_HOUR) {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, key = kind + ' ' + ip;
-  const now = Date.now(), list = (hits.get(key) || []).filter(t => now - t < 3600e3);
-  if (list.length >= perHour) return false;
-  list.push(now); hits.set(key, list);
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress, key = kind + ' ' + ip, all = kind + ' *';
+  const now = Date.now(), recent = k => (hits.get(k) || []).filter(t => now - t < 3600e3), mine = recent(key), every = recent(all);
+  if (mine.length >= perHour || every.length >= (GLOBAL_PER_HOUR[kind] ?? Infinity)) return false;
+  mine.push(now); every.push(now); hits.set(key, mine); hits.set(all, every);
   return true;
 }
 
