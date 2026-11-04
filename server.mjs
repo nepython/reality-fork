@@ -10,6 +10,7 @@ import {ROOT, ASSETS, UPLOADS, samples, clipById, clipInfo, runFile, latestRun, 
 import {spent, editImage, transcribe, samCachedOnly, hashOf} from './lib/meta.mjs';
 import {parseSam, tracksFrom} from './lib/sam.mjs';
 import {forkPixels} from './lib/forkview.mjs';
+import {chooseSpriteFrame} from './lib/spritepick.mjs';
 
 const PORT = Number(process.env.PORT || 8790);
 
@@ -101,19 +102,16 @@ function near(m, x, y, pad) {
   return false;
 }
 
-// The object's sprite: cut from the frame where it moves least (sharpest), using SAM's mask, as an RGBA PNG.
+// The object's sprite: cut with SAM's mask from a frame where the object is whole and sharp (lib/spritepick.mjs), as an RGBA PNG.
 async function spriteFor(clip, run, objectKey) {
-  const file = path.join(ASSETS, hashOf(clip.id, run.prompts?.[objectKey] || objectKey, 'sprite') + '.png');
+  const file = path.join(ASSETS, hashOf(clip.id, run.prompts?.[objectKey] || objectKey, 'sprite2') + '.png');
   const meta = file.replace(/\.png$/, '.json');
   if (fs.existsSync(file) && fs.existsSync(meta)) return {file, meta: JSON.parse(fs.readFileSync(meta, 'utf8'))};
   const masks = await masksFor(clip, run, objectKey);
   if (!masks) return null;
   const pts = run.report.tracks[objectKey];
-  let best = 0, bestSpeed = Infinity;
-  for (let i = 1; i < pts.length - 1; i++) {
-    const v = Math.hypot(pts[i + 1][1] - pts[i - 1][1], pts[i + 1][2] - pts[i - 1][2]);
-    if (v < bestSpeed && masks.has(pts[i][0])) { bestSpeed = v; best = i; }
-  }
+  const best = chooseSpriteFrame(pts, masks, run.info);
+  if (best < 0) return null;
   const frame = pts[best][0], m = masks.get(frame);
   const {width, height, frames} = readFrames(clip.file, {frames: [frame]});
   const w = m.right - m.left, h = m.bottom - m.top, rgba = Buffer.alloc(w * h * 4);
@@ -175,6 +173,9 @@ async function api(req, res, url) {
   if (url.pathname === '/api/analyze') {
     res.writeHead(200, {'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive'});
     const emit = ev => res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    // An empty box on a sample means "ask the clip's own question" (the page shows that question in the chat), so it
+    // replays the saved run instead of starting a live one.
+    if (!(q.q || '').trim() && clip.question) q.q = clip.question;
     const file = runFile(clip.id, q.q), norm = s => (s || '').trim().toLowerCase();
     // A sample's own question (the one the page fills in) replays its saved run under whatever wording that run was made
     // with. The street car was analysed from the CLI with no question, so without this every visitor's first "Run the

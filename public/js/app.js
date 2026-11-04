@@ -172,7 +172,8 @@ async function loadAnalysis(clip, report) {
   const measured = rep.fit?.measured || rep.tracks[obj];
   state.fit = {track: measured, fitPath: fit.real, ppm: rep.fit?.ppm, origin: rep.fit?.origin_px, start: rep.fit?.frames?.[0] || 0};
   state.axis = rep.fit?.model === 'pendulum' || rep.fit?.model === 'oscillator' && spread(state.fit.track, 1) > spread(state.fit.track, 2) ? 'x' : 'y';
-  if (rep.fit?.model === 'pendulum') state.axis = 'x';
+  // A pendulum, or a car crossing the frame, is told by how far it moves across, not by its height.
+  if (rep.fit?.model === 'pendulum' || vehicleOf(rep)) state.axis = 'x';
   stage.setAnalysis({track: state.fit.track, fitPath: fit.real, fps: state.info.fps, frames: state.info.frames, point: rep.fit?.point || 'centroid', ppm: rep.fit?.ppm});
   setPlot(true); plot(stage.frame);
   // Compositing assets, fetched in the background: masks, the clean plate, the object's cut-out.
@@ -291,7 +292,9 @@ function showForkBtn() {
 }
 function placeForkBtn() {
   const W = state.info.width, H = state.info.height, pts = state.fit?.track || [];
-  const busy = y => pts.some(p => p[1] < 0.3 * W && Math.abs(p[2] - y * H) < 0.22 * H);
+  // Clear of the tracked object's way past the left edge, and of a car fork's bird's-eye strip (stage.strip.layout).
+  const st = stage.forking ? stage.strip?.layout : null;
+  const busy = y => pts.some(p => p[1] < 0.3 * W && Math.abs(p[2] - y * H) < 0.22 * H) || st && y * H > st.y - 0.08 * H && y * H < st.y + st.h + 0.08 * H;
   $('forkBtn').style.top = ([0.5, 0.78, 0.22].find(y => !busy(y)) ?? 0.5) * 100 + '%';
 }
 
@@ -384,7 +387,8 @@ async function fork(f, moved = false) {
 
 const playFork = () => {
   const {label, res} = state.fork;
-  stage.setFork(res.path, {label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline, floor: res.floor_px, hazard: res.hazard});
+  stage.setFork(res.path, {label, start: res.path[0][0], end: res.end_frame, baseline: res.baseline, floor: res.floor_px, hazard: res.hazard, summary: res.summary});
+  requestAnimationFrame(placeForkBtn);  // the strip's layout exists once the stage has drawn the fork's first frame
 };
 
 // Save the fork as a video: record the stage canvas while the fork replays from the start, with the label and the

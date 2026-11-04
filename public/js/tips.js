@@ -26,9 +26,12 @@ function hide() {
 const target = e => e.target.closest?.('[data-tip]');
 document.addEventListener('pointerover', e => { const el = target(e); if (el && el !== current) { clearTimeout(timer); timer = setTimeout(() => show(el), 250); } });
 document.addEventListener('pointerout', e => { if (target(e) && !target(e)?.contains(e.relatedTarget)) hide(); });
-document.addEventListener('focusin', e => { const el = target(e); if (el && e.target.matches(':focus-visible')) show(el); });
+// Focus opens a tip only after keyboard use: focus handed back by script after a mouse pick (the Reality Fork button
+// once a card is chosen) can still match :focus-visible, which left its tip stuck open over the playing fork.
+let keyboard = false;
+document.addEventListener('focusin', e => { const el = target(e); if (el && keyboard && e.target.matches(':focus-visible')) show(el); });
 document.addEventListener('focusout', hide);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
-document.addEventListener('pointerdown', hide);
+document.addEventListener('keydown', e => { keyboard = true; if (e.key === 'Escape') hide(); });
+document.addEventListener('pointerdown', () => { keyboard = false; hide(); });
 // A control whose tip text changes while it is shown (the mic) refreshes it.
 export const refreshTip = el => { if (current === el) show(el); };

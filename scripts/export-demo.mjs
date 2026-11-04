@@ -29,7 +29,7 @@ for (const clip of samples()) {
   // The clean plate and the object's cut-out, built once here: a small free host (one tenth of a CPU, no lasting disk)
   // would otherwise rebuild them with ffmpeg on every cold start, and the first visitor would wait.
   const obj = run.report?.object, prompt = run.prompts?.[obj];
-  for (const name of [hashOf(clip.id, 'plate', prompt || '', obj || ''), hashOf(clip.id, prompt || obj, 'sprite')])
+  for (const name of [hashOf(clip.id, 'plate', prompt || '', obj || ''), hashOf(clip.id, prompt || obj, 'sprite2')])  // 'sprite2': the key spriteFor in server.mjs uses since the whole-object frame choice
     for (const ext of ['.jpg', '.png', '.json']) if (fs.existsSync(path.join(ASSETS, name + ext))) copy(path.join(ASSETS, name + ext), path.join(OUT, 'assets', name + ext));
   for (const world of ['moon', 'mars', 'jupiter']) {
     const name = hashOf(clip.id, world, 'restyle') + '.jpg';

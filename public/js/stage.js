@@ -1,5 +1,8 @@
 // The stage: the clip with its measurements drawn over it, and the fork, where the real object is erased from every
 // frame (SAM's mask filled from the clean plate) and redrawn on the path the changed physics gives it.
+import {pedestrian, PEDESTRIAN_M} from './pedestrian.js';
+import {stripLayout, drawStrip} from './strip.js';
+
 const COL = {measured: '#ffd60a', fit: '#00c8ff', fork: '#ff40a0', mask: 'rgba(124, 92, 255, 0.38)', sam: '#7c5cff', samFill: 'rgba(124, 92, 255, 0.42)'};
 
 export class Stage {
@@ -40,8 +43,11 @@ export class Stage {
   redraw() { this.draw(this.frame); }
 
   // ---- fork playback -------------------------------------------------------------------------------------------
-  setFork(path, {label, start, end, baseline, floor, hazard} = {}) {
-    this.hazard = hazard || null; this.followKey = null;
+  // `summary` (optional) is the fork's sentence for the result chip; without it the chip reads the page's own summary line.
+  setFork(path, {label, start, end, baseline, floor, hazard, summary} = {}) {
+    this.hazard = hazard || null; this.strip = null; this.strobe = null;
+    const page = document.getElementById('forkSummary')?.textContent;
+    this.summary = summary ?? (page && !/^Muse Image/.test(page) ? page : '');
     this.data.forkPath = path;
     this.data.floorPx = floor ?? null;
     this.data.basePath = baseline || null;
@@ -134,44 +140,55 @@ export class Stage {
   }
 
   drawFork(frame) {
-    const d = this.data, ctx = this.ctx;
+    const d = this.data, ctx = this.ctx, W = d.width, H = d.height;
     const inClip = frame <= d.frames - 1;
-    const cam = this.camera(frame);
-    if (cam.s < 0.999) {
-      ctx.fillStyle = '#070910'; ctx.fillRect(0, 0, d.width, d.height);
-      ctx.setTransform(cam.s, 0, 0, cam.s, d.width / 2 - cam.s * cam.cx, d.height / 2 - cam.s * cam.cy);
-      if (this.followed()) this.drawRoad(cam);
-      this.grid(cam);
+    const cam = this.camera(frame), pulled = cam.s < 0.999;
+    if (pulled) {
+      // Pulled back, the footage is a lit window in a dark metre grid: the void, then a soft shadow the footage casts on it.
+      this.drawVoid(cam);
+      ctx.setTransform(cam.s, 0, 0, cam.s, W / 2 - cam.s * cam.cx, H / 2 - cam.s * cam.cy);
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 28; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore();
     }
-    if (d.world) ctx.drawImage(d.world, 0, 0, d.width, d.height);
+    const live = inClip ? this.video : this.last;
+    if (d.world) ctx.drawImage(d.world, 0, 0, W, H);
     else if (inClip) {
-      ctx.drawImage(this.video, 0, 0, d.width, d.height);
-      this.last.getContext('2d').drawImage(this.video, 0, 0, d.width, d.height);
+      ctx.drawImage(this.video, 0, 0, W, H);
+      this.last.getContext('2d').drawImage(this.video, 0, 0, W, H);
     } else ctx.drawImage(this.last, 0, 0);
     const start = d.forkPath[0][0];
     // Before the fork begins (the object is still held), the footage plays untouched. On a scene that changes behind
     // the object (a launch: plume and lighting), the plate is no true background, so the real object stays, veiled.
     if (frame >= start && !d.world) {
       if (d.plateSteady === false) this.drawMask(Math.min(frame, d.frames - 1), 'rgba(8, 10, 20, 0.5)', 3);
-      else this.eraseObject(Math.min(frame, d.frames - 1));
+      else this.eraseObject(Math.min(frame, d.frames - 1), live);
     }
-    if (this.show.path && d.fitPath) this.curve(d.fitPath, 'rgba(255,214,10,0.55)', 1.5, [4, 5]);
-    this.curve(d.forkPath.filter(q => q[0] <= frame), COL.fork, 2.5);
-    const p = d.forkPath.find(q => q[0] === frame) || (frame > this.forkEnd ? d.forkPath.at(-1) : null);
+    // The real path, a faint dotted ghost; the fork's own path so far, and (when it is not a car at a crossing) the
+    // stroboscopic copies of the cut-out along it.
+    const real = d.basePath || d.fitPath;
+    if (this.show.path && real) this.dotted(real, 'rgba(255,255,255,0.5)');
+    // A car that hits the person stays where it hit (the path goes on past the crossing and out of shot, which left the
+    // person alone in the final frame with nothing to explain the red callout).
+    const pf = this.hazard?.outcome?.kind === 'hits' ? Math.min(frame, this.hazard.event.frame) : frame;
+    const p = d.forkPath.find(q => q[0] === pf) || (pf > this.forkEnd ? d.forkPath.at(-1) : null);
     this.gapText = '';
+    this.curve(d.forkPath.filter(q => q[0] <= pf), COL.fork, 2.5);
+    if (!this.hazard && frame >= start) this.strobeCopies(frame);
     if (p && frame >= start) {
-      this.sprite(p[1], p[2]);
+      this.sprite(p[1], p[2], {ground: !!this.hazard});
       // Pulled back, a ball is a few pixels across: ring it so the eye can follow it.
       if (cam.s < 0.8) { ctx.strokeStyle = COL.fork; ctx.lineWidth = 2.5 / cam.s; ctx.beginPath(); ctx.arc(p[1], p[2], 14 / cam.s, 0, 7); ctx.stroke(); }
       if (d.plateSteady === false) this.gapLines(frame, p);
     } else if (d.world && frame < start) { const q = d.track?.find(r => r[0] === frame); if (q) this.sprite(q[1], q[2]); }
     if (d.crossing) this.drawCrossing(frame);
-    if (cam.s < 0.999) {
+    if (pulled) {
       // The footage's own edges, so the viewer sees how far beyond the shot the fork has gone.
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2 / cam.s; ctx.setLineDash([]);
-      ctx.strokeRect(0, 0, d.width, d.height);
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5 / cam.s; ctx.setLineDash([]); ctx.strokeRect(0, 0, W, H);
+      ctx.font = `700 ${11 / cam.s}px ui-monospace, monospace`; ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.textBaseline = 'bottom'; ctx.textAlign = 'left';
+      ctx.fillText('FOOTAGE', 2 / cam.s, -5 / cam.s);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
+    if (this.hazard) this.drawBirdsEye(frame);
+    else this.drawChip(frame, start);
     if (this.badge) {
       this.badge.hidden = false;
       const t = Math.max(0, (frame - start) / d.fps);
@@ -179,105 +196,112 @@ export class Stage {
     }
   }
 
-  // A braking fork on a vehicle run is shown by a following camera and a continued road (see followCamera, drawRoad).
-  followed() { const d = this.data; return !!(this.forking && this.hazard && d.road && d.plate); }
-
-  // The following camera is a pure function of the frame (scrubbing and replay agree): the zoom is fixed per fork, never
-  // below 55% so the footage stays over half the stage; the centre glides from the car to a soft-clamped view of the
-  // crossing over the first 2.5 s (so the person's step-out and the crossing are in view), follows the car in, and after
-  // the stop or impact eases to the midpoint of car and crossing and holds there on the callout.
-  followCamera(frame) {
-    const d = this.data, W = d.width, H = d.height, path = d.forkPath, h = this.hazard, fps = d.fps, f0 = path[0][0];
-    const key = path;
-    if (this.followKey !== key) {
-      const b = this.spriteBox(), carW = b.r - b.l, at0 = path[Math.max(0, Math.min(path.length - 1, h.step_out_frame - f0))];
-      const need = Math.abs(h.x_px - at0[1]) + carW, ev = path[Math.max(0, Math.min(path.length - 1, h.event.frame - f0))];
-      const end = Math.abs(h.x_px - ev[1]) + carW;
-      this.followKey = key; this.followS = Math.max(0.55, Math.min(1, W / (1.15 * Math.max(need, end))));
+  // ---- the bird's-eye strip (braking forks) --------------------------------------------------------------------
+  // The footage stays at full size, and the road beyond the frame is not guessed at (it used to be the plate's edge pixels
+  // stretched outward, which read as smears): the strip, drawn from the response's numbers, carries the off-frame story.
+  // It sits where it hides least of the cut-out's path and the crossing: the top (sky) on a street clip, else the bottom.
+  drawBirdsEye(frame) {
+    const d = this.data, h = this.hazard;
+    if (!h.distances || !h.outcome) return;
+    if (!this.strip || this.strip.path !== d.forkPath) {
+      const W = d.width, H = d.height, k = W / 1280, sh = 168 * k, b = this.spriteBox(), ground = h.y_px + Math.max(0, b.b), tall = this.personH();
+      // Rows the car (over the frames it is in shot) and the crossing's person occupy, against the two candidate bands.
+      const rows = d.forkPath.filter(q => q[1] + b.r > 0 && q[1] + b.l < W).map(q => [q[2] + b.t, q[2] + b.b]).concat([[ground - tall - 20 * k, ground + 8 * k]]);
+      const cover = (y0, y1) => rows.reduce((n, [a, c]) => n + Math.max(0, Math.min(c, y1) - Math.max(a, y0)), 0);
+      const top = 60 * k, atTop = cover(top, top + sh) <= cover(H - sh - 14 * k, H - 14 * k);
+      this.strip = {path: d.forkPath, layout: stripLayout({W, H, path: d.forkPath, hz: h, atTop, color: this.carColor(), fps: d.fps})};
     }
-    const s = this.followS;
-    if (s >= 0.999) return this.cam = {s: 1, cx: W / 2, cy: H / 2};
-    const sm = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
-    const car = path[Math.max(0, Math.min(path.length - 1, frame - f0))], cross = h.x_px, evf = h.event.frame;
-    const evCar = path[Math.max(0, Math.min(path.length - 1, evf - f0))];
-    const L = 0.25 * W / s;
-    const lead = cross + L * Math.tanh((car[1] - cross) / L);
-    const w1 = sm((frame - f0 - 0.2 * fps) / (2.3 * fps)), w2 = sm((frame - evf) / (2 * fps));
-    const base = car[1] + (lead - car[1]) * w1;
-    const cx = base + ((evCar[1] + cross) / 2 - base) * w2;
-    const roadAt = d.road(cx), cy = (H / 2 + roadAt) / 2;
-    return this.cam = {s, cx, cy};
+    drawStrip(this.ctx, this.strip.layout, frame, d.fps);
   }
 
-  // The scene carried on past the footage's edges, so a car driving out of shot stays on its road: the plate's own edge
-  // strips are stretched outward (sky, trees, road and kerb stay continuous with the footage, as streaks), the colours
-  // just inside its letterbox fill the corners, and a light veil marks all of it as not filmed. The road's edges and
-  // centre line continue faintly on either side. (Flat sampled bands alone read as coloured blocks with a seam.)
-  drawRoad(cam) {
-    const m = this.roadModel(); if (!m) return;
-    const d = this.data, ctx = this.ctx, W = d.width, k = this.scale();
-    const vx0 = cam.cx - W / 2 / cam.s - 10, vx1 = cam.cx + W / 2 / cam.s + 10, vy0 = cam.cy - d.height / 2 / cam.s - 10, vy1 = cam.cy + d.height / 2 / cam.s + 10;
-    const P = d.plate, pw = P.naturalWidth || P.width, ph = P.naturalHeight || P.height, rx = pw / W, ry = ph / d.height;
-    const {t0, b0} = m, strip = (sx, sy, sw, sh, x, y, w, h) => w > 0 && h > 0 && ctx.drawImage(P, sx * rx, sy * ry, sw * rx, sh * ry, x, y, w, h);
-    ctx.save();
-    for (const [x0, x1, e] of [[vx0, 0, m.left], [W, vx1, m.right]]) {
-      if (x1 <= x0) continue;
-      ctx.fillStyle = e.above; ctx.fillRect(x0, vy0, x1 - x0, t0 - vy0);
-      ctx.fillStyle = e.below; ctx.fillRect(x0, b0, x1 - x0, vy1 - b0);
-      strip(e.x < W / 2 ? 1 : W - 7, t0, 6, b0 - t0, x0, t0, x1 - x0, b0 - t0);
-    }
-    strip(0, t0 + 1, W, 3, 0, vy0, W, t0 - vy0);
-    strip(0, b0 - 4, W, 3, 0, b0, W, vy1 - b0);
-    // The veil covers the footage's rectangle too; the footage is drawn over it next.
-    ctx.fillStyle = 'rgba(8,10,14,0.24)'; ctx.fillRect(vx0, vy0, vx1 - vx0, vy1 - vy0);
-    for (const [x0, x1, e] of [[vx0, 0, m.left], [W, vx1, m.right]]) {
-      if (x1 <= x0) continue;
-      const at = (x, y) => y + m.slope * (x - e.x);
-      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2.5 * k;
-      ctx.beginPath(); for (const y of [e.top, e.bot]) { ctx.moveTo(x0, at(x0, y)); ctx.lineTo(x1, at(x1, y)); } ctx.stroke();
-      ctx.setLineDash([22 * k, 18 * k]); ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath();
-      const mid = (e.top + e.bot) / 2; ctx.moveTo(x0, at(x0, mid)); ctx.lineTo(x1, at(x1, mid)); ctx.stroke(); ctx.setLineDash([]);
-    }
+  // The footage car's own colour (mean of its cut-out's opaque pixels), so its top-view icon matches.
+  carColor() {
+    const s = this.data.sprite; if (!s) return undefined;
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 12; const g = c.getContext('2d', {willReadFrequently: true});
+      g.drawImage(s, 0, 0, 12, 12); const px = g.getImageData(0, 0, 12, 12).data; let r = 0, gg = 0, b = 0, n = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 200) { r += px[i]; gg += px[i + 1]; b += px[i + 2]; n++; }
+      return n ? `rgb(${Math.round(r / n * 1.4)},${Math.round(gg / n * 1.4)},${Math.round(b / n * 1.4)})` : undefined;
+    } catch { return undefined; }
+  }
+
+  // ---- result chip, stroboscopic trail, dotted ghost (every fork but a braking one) ------------------------------
+  // The fork's headline: the first sentence of its summary, cut at a clause when it is long.
+  headline() {
+    const t = (this.summary || '').replace(/\s+/g, ' ').trim(); if (!t) return '';
+    let first = t.split(/(?<=[.!?])\s/)[0];
+    if (first.length > 96) { const i = first.search(/[,;(]/); if (i > 30) first = first.slice(0, i); else first = first.slice(0, 93) + '…'; }
+    return first.replace(/[.]$/, '');
+  }
+  drawChip(frame, start) {
+    const text = this.headline(); if (!text) return;
+    const d = this.data, ctx = this.ctx, k = d.width / 1280, t = Math.max(0, (frame - start) / d.fps), a = Math.min(1, t / 0.5);
+    ctx.save(); ctx.globalAlpha = a; ctx.font = `600 ${19 * k}px system-ui, sans-serif`; ctx.textBaseline = 'middle';
+    const lines = wrap(ctx, text, Math.min(0.55 * d.width, 640 * k) - 44 * k), lh = 25 * k, w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 52 * k, h = lines.length * lh + 18 * k;
+    // Below the page's badge row (the badge's text can run to the middle of the picture).
+    const x = d.width - 16 * k - w, y = 62 * k - (1 - a) * 8 * k;
+    ctx.fillStyle = 'rgba(8, 10, 18, 0.82)'; ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = k; ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 14 * k;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 12 * k); ctx.fill(); ctx.shadowBlur = 0; ctx.stroke();
+    ctx.fillStyle = COL.fork; ctx.beginPath(); ctx.arc(x + 19 * k, y + h / 2, 5.5 * k, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff'; lines.forEach((l, i) => ctx.fillText(l, x + 34 * k, y + 9 * k + lh / 2 + i * lh));
     ctx.restore();
   }
 
-  // Measured once per plate: at each side edge, the run of asphalt-coloured rows round the car's wheels, and the colours
-  // just above and below it. Nothing is assumed about the colour or width of the road.
-  roadModel() {
-    const d = this.data;
-    if (this.road?.plate === d.plate && this.road.road === d.road) return this.road.model;
-    const W = d.width, H = d.height, c = document.createElement('canvas'); c.width = W; c.height = H;
-    const g = c.getContext('2d', {willReadFrequently: true}); g.drawImage(d.plate, 0, 0, W, H);
-    const px = g.getImageData(0, 0, W, H).data, at = (x, y) => { const i = (Math.max(0, Math.min(H - 1, Math.round(y))) * W + Math.max(0, Math.min(W - 1, Math.round(x)))) * 4; return [px[i], px[i + 1], px[i + 2]]; };
-    const med = a => a.sort((p, q) => p - q)[a.length >> 1];
-    const mean = pts => [0, 1, 2].map(i => Math.round(med(pts.map(p => p[i]))));
-    const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
-    const b = this.spriteBox(), carH = Math.max(20, d.spriteMeta?.height || 1.5 * (d.ppm || 60));
-    const slope = d.road(W) - d.road(0); const sl = slope / W;
-    const edge = x => {
-      const gy = d.road(x) + (d.spriteMeta ? Math.max(0, b.b) : 0.35 * carH);
-      const seed = mean([-0.25, -0.2, -0.15, -0.1, -0.05, -0.03].flatMap(o => [-3, 0, 3].map(dx => at(x + dx, gy + o * carH))));
-      const y0 = gy - 0.1 * carH, lim = 0.5 * H, scan = dir => {
-        let last = y0, gap = 0;
-        for (let y = y0; Math.abs(y - y0) < lim && y > 0 && y < H - 1; y += dir) { if (dist(at(x, y), seed) < 45) { last = y; gap = 0; } else if (++gap > 8) break; }
-        return last;
-      };
-      let top = scan(-1), bot = scan(1);
-      if (bot - top < 0.4 * carH) { top = gy - 0.6 * carH; bot = gy + 0.3 * carH; }
-      const col = a => `rgb(${a.join(',')})`;
-      // Above and below: the colours just inside the picture's letterbox, carried on past the stretched strip.
-      return {x, top, bot, above: col(mean([...Array(8)].map((_, i) => at(x, t0 + 2 + i)))), below: col(mean([...Array(8)].map((_, i) => at(x, b0 - 2 - i))))};
+  // Copies of the cut-out at regular time steps along the fork's path, fading with age: the classic physics photograph.
+  // The step starts at 0.2 s and doubles until neighbouring copies sit about half a cut-out apart, so a slow fork is not
+  // a smear of overlapping copies and a fast one still shows several.
+  strobeCopies(frame) {
+    const d = this.data, path = d.forkPath;
+    if (!this.strobe || this.strobe.path !== path) {
+      const b = this.spriteBox(), size = Math.max(24, Math.min(b.r - b.l, b.b - b.t) * 0.9), moved = n => path.map((q, i) => i + n < path.length ? Math.hypot(path[i + n][1] - q[1], path[i + n][2] - q[2]) : null).filter(v => v != null).sort((a, c) => a - c);
+      let n = Math.max(1, Math.round(0.2 * d.fps));
+      for (; n < path.length / 3; n *= 2) { const m = moved(n); if (m.length && m[m.length >> 1] >= 0.5 * size) break; }
+      this.strobe = {path, n};
+    }
+    const {n} = this.strobe, f0 = path[0][0], ctx = this.ctx;
+    const copies = []; for (let f = f0; f < frame; f += n) { const q = path[f - f0]; if (q) copies.push(q); }
+    const shown = copies.slice(-10);
+    ctx.save();
+    shown.forEach((q, i) => { ctx.globalAlpha = 0.14 + 0.36 * (i + 1) / shown.length; this.sprite(q[1], q[2]); });
+    ctx.restore();
+  }
+
+  dotted(pts, color) {
+    if (!pts || pts.length < 2) return;
+    const ctx = this.ctx, k = this.scale();
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 3.2 * k; ctx.lineCap = 'round'; ctx.setLineDash([0.1, 9 * k]);
+    ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[1], p[2]) : ctx.moveTo(p[1], p[2])); ctx.stroke(); ctx.restore();
+  }
+
+  // The dark void a pulled-back camera sees beyond the footage: a soft gradient, a metre grid (minor and major lines),
+  // the ground tinted below the floor, and metre labels along the screen's edges (distance from where the fork starts,
+  // height above the floor). Labels are in screen space, so they keep their size however far the camera goes back.
+  drawVoid(cam) {
+    const d = this.data, ctx = this.ctx, W = d.width, H = d.height, ppm = d.ppm;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#090c18'); bg.addColorStop(1, '#10162a');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    if (!ppm) return;
+    const nice = [1, 2, 5, 10, 20, 50, 100, 200], major = nice.find(m => m * ppm * cam.s >= 90) || 500, minor = major / (major === 2 || major === 20 ? 4 : 5);
+    const q = d.forkPath[0], b = this.spriteBox(), floor = d.floorPx != null ? d.floorPx + Math.max(0, b.b) : null, yRef = floor ?? q[2];
+    const sx = x => W / 2 + cam.s * (x - cam.cx), sy = y => H / 2 + cam.s * (y - cam.cy);
+    const vx0 = cam.cx - W / 2 / cam.s, vx1 = cam.cx + W / 2 / cam.s, vy0 = cam.cy - H / 2 / cam.s, vy1 = cam.cy + H / 2 / cam.s;
+    if (floor != null) { const g = ctx.createLinearGradient(0, sy(floor), 0, H); g.addColorStop(0, 'rgba(214,180,130,0.16)'); g.addColorStop(1, 'rgba(214,180,130,0.02)'); ctx.fillStyle = g; ctx.fillRect(0, sy(floor), W, H - sy(floor)); }
+    const lines = (step, col, lw) => {
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath();
+      for (let m = Math.ceil((vx0 - q[1]) / ppm / step) * step; q[1] + m * ppm <= vx1; m += step) { const x = Math.round(sx(q[1] + m * ppm)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+      for (let m = Math.ceil((yRef - vy1) / ppm / step) * step; yRef - m * ppm >= vy0; m += step) { const y = Math.round(sy(yRef - m * ppm)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      ctx.stroke();
     };
-    // Letterbox bars (near-black rows at the top and bottom of the whole width) are left out of the stretched strip.
-    const lum = y => { let s = 0; for (let x = 0; x < W; x += 16) { const p = at(x, y); s += p[0] + p[1] + p[2]; } return s / (3 * Math.ceil(W / 16)); };
-    let t0 = 0, b0 = H - 1;
-    while (t0 < H / 4 && lum(t0) < 16) t0++;
-    while (b0 > 3 * H / 4 && lum(b0) < 16) b0--;
-    b0 += 1;
-    const left = edge(6), right = edge(W - 7);
-    // Edge rows and the lines run along the car's own line of travel; the left/right rows are relative to their edge column.
-    this.road = {plate: d.plate, road: d.road, model: {slope: sl, t0, b0, left, right}};
-    return this.road.model;
+    if (minor * ppm * cam.s >= 14) lines(minor, 'rgba(130,150,200,0.07)', 1);
+    lines(major, 'rgba(130,150,200,0.2)', 1);
+    if (floor != null) { ctx.strokeStyle = 'rgba(214,180,130,0.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, sy(floor)); ctx.lineTo(W, sy(floor)); ctx.stroke(); }
+    const k = Math.max(0.8, W / 1280);
+    ctx.font = `600 ${11 * k}px ui-monospace, monospace`; ctx.fillStyle = 'rgba(190,205,240,0.65)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    for (let m = Math.ceil((vx0 - q[1]) / ppm / major) * major; q[1] + m * ppm <= vx1; m += major) { const x = sx(q[1] + m * ppm); if (x > 30 && x < W - 30) ctx.fillText(m === 0 ? '0' : `${m > 0 ? '+' : '−'}${Math.abs(m)} m`, x, H - 62 * k); }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    for (let m = Math.ceil((yRef - vy1) / ppm / major) * major; yRef - m * ppm >= vy0; m += major) { const y = sy(yRef - m * ppm); if (y > 40 && y < H - 24) ctx.fillText(m === 0 ? (floor != null ? 'ground' : '0') : `${m > 0 ? '' : '−'}${Math.abs(m)} m`, 8 * k, y - 3 * k); }
   }
 
   // A click's x on the canvas as an x on the footage (the camera may be pulled back while a fork plays).
@@ -286,27 +310,34 @@ export class Stage {
     return c ? c.cx + (x - this.data.width / 2) / c.s : x;
   }
 
-  // Where someone steps out in front of a car: a zebra band across the road, a little walker once they have stepped
-  // out, and when the fork reaches its outcome a callout that stays (red for a hit, green for a stop in time).
+  // The person at their true height: a child with a school bag, 1.3 m, times the footage's pixels per metre (an adult would be
+  // 1.7 m; see pedestrian.js). Never under ~48 screen px, so it still reads on a small clip or a pulled-back camera.
+  personH() { const cs = this.forking && this.cam ? this.cam.s : 1; return Math.max(PEDESTRIAN_M.child * (this.data.ppm || 30), 48 / cs); }
+
+  // Where someone steps out in front of a car: a zebra band across the road, the person once they step out (walking off
+  // the near kerb), and when the fork reaches its outcome a callout that stays (red for a hit, green for a stop in time).
   drawCrossing(frame) {
     const d = this.data, ctx = this.ctx, h = this.hazard, x = h?.x_px ?? d.crossing.x, y = h?.y_px ?? d.crossing.y;
-    // A person at their true height (1.7 m), but never smaller than ~60 screen px, so it reads when the camera is pulled back.
-    const k = this.scale(), cs = this.forking && this.cam ? this.cam.s : 1, ppm = d.ppm || 30, bw = Math.max(0.8 * ppm, 10 / cs);
-    const ground = y + Math.max(0, this.spriteBox().b), tall = Math.max(1.7 * ppm, 60 / cs);
-    ctx.save();
-    // The band: pale stripes across the road, with a line down its middle that reads at any size.
+    const k = this.scale(), ppm = d.ppm || 30, bw = Math.max(0.8 * ppm, 10 / (this.cam?.s || 1));
+    const ground = y + Math.max(0, this.spriteBox().b), tall = this.personH();
     const top = Math.max(0, ground - 1.2 * tall), bot = Math.min(d.height, ground + 0.35 * tall);
-    ctx.fillStyle = 'rgba(255,255,255,0.16)'; ctx.fillRect(x - bw, top, 2 * bw, bot - top);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    const n = Math.max(3, Math.round((bot - top) / (bw * 0.7)));
-    for (let i = 0; i < n; i += 2) ctx.fillRect(x - bw, top + (i * (bot - top)) / n, 2 * bw, (bot - top) / n);
+    ctx.save();
+    // The band: pale stripes across the road, fading out at both ends so it sits in the picture rather than on it.
+    const fade = ctx.createLinearGradient(0, top, 0, bot); fade.addColorStop(0, 'rgba(255,255,255,0)'); fade.addColorStop(0.3, 'rgba(255,255,255,0.5)'); fade.addColorStop(1, 'rgba(255,255,255,0.5)');
+    const n = Math.max(8, Math.round((bot - top) / (bw * 0.2)));
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(x - bw, top, 2 * bw, bot - top);
+    ctx.fillStyle = fade; for (let i = 0; i < n; i += 2) ctx.fillRect(x - bw, top + (i * (bot - top)) / n, 2 * bw, (bot - top) / n);
     ctx.strokeStyle = '#ffd60a'; ctx.lineWidth = 2.5 * k; ctx.setLineDash([8 * k, 6 * k]);
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, d.height); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bot); ctx.stroke(); ctx.setLineDash([]);
     // The person appears when they step out; the idle marker (no fork yet) shows them faintly so the spot is clear.
-    const out = !h || frame >= (h.step_out_frame ?? 0);
-    ctx.globalAlpha = h ? (out ? 1 : 0) : 0.6;
-    if (ctx.globalAlpha) this.walker(x, ground, tall, frame);
-    ctx.globalAlpha = 1;
+    // Walking off the near kerb they move up the picture, away from the camera, over about two seconds.
+    const tOut = h ? (frame - (h.step_out_frame ?? 0)) / d.fps : 0, out = !h || tOut >= 0;
+    if (out) {
+      const p = h ? Math.min(1, tOut / 2.2) : 0;
+      ctx.globalAlpha = h ? Math.min(1, tOut / 0.25 + 0.001) : 0.6;
+      pedestrian(ctx, x, ground + (0.2 - 0.34 * p) * tall, tall, h ? Math.max(0, tOut) : 0.3);
+      ctx.globalAlpha = 1;
+    }
     this.label(x, Math.max(18, top - 14 * k), h ? 'crossing' : 'crossing · click the road to move', '#ffd60a');
     const ev = h?.event;
     if (ev && frame >= ev.frame) {
@@ -317,24 +348,15 @@ export class Stage {
         ctx.strokeStyle = col; ctx.lineWidth = 4 * k; ctx.beginPath(); ctx.moveTo(x0, yb); ctx.lineTo(x, yb);
         ctx.moveTo(x0, yb - 8 * k); ctx.lineTo(x0, yb + 8 * k); ctx.moveTo(x, yb - 8 * k); ctx.lineTo(x, yb + 8 * k); ctx.stroke();
       }
-      this.callout(Math.min(Math.max(x, 140 * k), d.width - 140 * k), Math.max(40 * k, top - 66 * k), h.outcome.text, col);
+      if (hit) {   // the impact: a red ring spreading from the person, for the first second
+        const a = Math.max(0, 1 - (frame - ev.frame) / d.fps), r = (0.4 + 1.1 * (1 - a)) * tall;
+        ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = 5 * k; ctx.beginPath(); ctx.arc(x, ground - 0.5 * tall, r, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      // Beside the strip, not under it: just below a strip at the top, just above one at the bottom.
+      const st = this.strip?.layout, cy = !st ? Math.max(40 * k, top - 66 * k) : st.atTop ? st.y + st.h + 30 * k : st.y - 30 * k;
+      this.callout(Math.min(Math.max(x, 140 * k), d.width - 140 * k), cy, h.outcome.text, col);
     }
     ctx.restore();
-  }
-
-  // A walking person from simple strokes: head, body, swinging arms and legs.
-  walker(x, ground, tall, frame) {
-    const ctx = this.ctx, s = tall / 100, sw = Math.sin(frame * 0.5) * 12 * s, hip = ground - 45 * s, sh = ground - 78 * s;
-    const draw = (c, w) => {
-      ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath();
-      ctx.moveTo(x, sh); ctx.lineTo(x, hip);                                   // body
-      ctx.moveTo(x, sh + 4 * s); ctx.lineTo(x + sw, sh + 30 * s);               // arms
-      ctx.moveTo(x, sh + 4 * s); ctx.lineTo(x - sw, sh + 30 * s);
-      ctx.moveTo(x, hip); ctx.lineTo(x - sw * 1.2, ground);                     // legs
-      ctx.moveTo(x, hip); ctx.lineTo(x + sw * 1.2, ground);
-      ctx.stroke(); ctx.beginPath(); ctx.arc(x, sh - 10 * s, 9 * s, 0, 7); ctx.stroke();
-    };
-    draw('rgba(8,10,18,0.9)', 7 * s); draw('#fff', 3.5 * s);
   }
 
   callout(x, y, text, color) {
@@ -350,7 +372,8 @@ export class Stage {
   // Where the fork leaves the shot, pull the camera back (the server trims the path at five frames across) so the
   // whole arc stays in view. It looks a few frames ahead and eases, so it moves before the object reaches the edge.
   camera(frame) {
-    if (this.followed()) return this.followCamera(frame);
+    // A braking fork keeps the footage at full size: the off-frame road is the bird's-eye strip's job, not a pulled-back camera's.
+    if (this.hazard) return this.cam = {s: 1, cx: this.data.width / 2, cy: this.data.height / 2};
     const d = this.data, W = d.width, H = d.height, b = this.spriteBox();
     let x0 = 0, y0 = 0, x1 = W, y1 = H;
     for (const q of d.forkPath) {
@@ -379,37 +402,64 @@ export class Stage {
     return {l: m.left - ax, r: m.left + m.width - ax, t: m.top - ay, b: m.top + m.height - ay};
   }
 
-  // A faint metre grid in the dark beyond the footage: scale for how far out of shot the fork goes.
-  grid(cam) {
-    const d = this.data, ctx = this.ctx, ppm = d.ppm;
-    if (!ppm) return;
-    const step = ppm * (ppm * cam.s < 12 ? 10 : ppm * cam.s < 40 ? 5 : 1);
-    const vx0 = cam.cx - d.width / 2 / cam.s, vx1 = cam.cx + d.width / 2 / cam.s, vy0 = cam.cy - d.height / 2 / cam.s, vy1 = cam.cy + d.height / 2 / cam.s;
-    ctx.strokeStyle = 'rgba(120,140,190,0.13)'; ctx.lineWidth = 1 / cam.s; ctx.beginPath();
-    for (let x = Math.floor(vx0 / step) * step; x <= vx1; x += step) { ctx.moveTo(x, vy0); ctx.lineTo(x, vy1); }
-    for (let y = Math.floor(vy0 / step) * step; y <= vy1; y += step) { ctx.moveTo(vx0, y); ctx.lineTo(vx1, y); }
-    ctx.stroke();
-    // The floor the fork lands on, carried on beyond the footage on both sides. floorPx is where the tracked point
-    // stops (a ball's centre, a jumper's backpack); the floor itself is under the cut-out's bottom edge.
-    if (d.floorPx != null) {
-      const y = d.floorPx + Math.max(0, this.spriteBox().b);
-      ctx.strokeStyle = 'rgba(214,180,130,0.6)'; ctx.lineWidth = 2 / cam.s; ctx.beginPath();
-      ctx.moveTo(vx0, y); ctx.lineTo(0, y); ctx.moveTo(d.width, y); ctx.lineTo(vx1, y); ctx.stroke();
+  // Erase the real object: the clean plate's pixels over its mask. Two things made a grey blob of it before. The mask hugged
+  // the object (so its blur, shade and the shadow under it stayed), and the plate's exposure and shadows differ from the
+  // frame's. So the mask is grown (more below, where the object's shadow falls) and feathered, and the patch is shifted by
+  // the plate-versus-frame colour difference measured on a ring just outside it, spread smoothly inside (a coarse grid
+  // relaxed to its border values: the idea of Poisson cloning without the solver). A patch that matches its surroundings has no edge.
+  eraseObject(frame, live = this.video) {
+    const d = this.data, m = this.maskCanvas(frame, 0);
+    if (!m || !d.plate) return;
+    const W = d.width, H = d.height, bw = m.canvas.width, bh = m.canvas.height, R = 7, RING = 9, down = Math.round(Math.min(14, 0.07 * bh)), M = R + RING + 3;
+    const rx = Math.max(0, m.x - M), ry = Math.max(0, m.y - M), rw = Math.min(W, m.x + bw + M) - rx, rh = Math.min(H, m.y + bh + M + down) - ry;
+    if (rw < 2 || rh < 2) return;
+    const grown = r => {   // the mask grown by r pixels (and `down` more downward), as an alpha canvas over the region
+      const c = document.createElement('canvas'); c.width = rw; c.height = rh; const g = c.getContext('2d');
+      const put = (dx, dy) => g.drawImage(m.canvas, m.x - rx + dx, m.y - ry + dy);
+      put(0, 0);
+      for (let a = 0; a < 16; a++) for (const rr of [r, r * 0.55]) { const dx = Math.cos(a * Math.PI / 8) * rr, dy = Math.sin(a * Math.PI / 8) * rr; put(dx, dy); if (dy > 0) put(dx, dy + down); }
+      for (let j = 1; j <= down; j += 2) put(0, r + j);
+      return c;
+    };
+    const inner = grown(R), outer = grown(R + RING);
+    const px = c => c.getContext('2d', {willReadFrequently: true}).getImageData(0, 0, rw, rh).data;
+    const crop = (src, c) => { const g = c.getContext('2d', {willReadFrequently: true}), sw = (src.naturalWidth || src.videoWidth || src.width) / W, sh = (src.naturalHeight || src.videoHeight || src.height) / H; g.drawImage(src, rx * sw, ry * sh, rw * sw, rh * sh, 0, 0, rw, rh); return g.getImageData(0, 0, rw, rh).data; };
+    const mk = () => { const c = document.createElement('canvas'); c.width = rw; c.height = rh; return c; };
+    const A = px(inner), O = px(outer), P = crop(d.plate, mk()), F = crop(live, mk());
+    // Feathered alpha: the grown mask blurred a little (where the canvas can blur; elsewhere the edge stays crisp but matched).
+    const soft = mk(), sg = soft.getContext('2d', {willReadFrequently: true});
+    if ('filter' in sg) sg.filter = 'blur(2.4px)';
+    sg.drawImage(inner, 0, 0); const S = sg.getImageData(0, 0, rw, rh).data;
+    // Colour difference (frame − plate) on the ring, in cells of 6 px; known where the ring touches, relaxed elsewhere.
+    const cs = 6, gw = Math.ceil(rw / cs), gh = Math.ceil(rh / cs), sum = new Float32Array(gw * gh * 3), cnt = new Float32Array(gw * gh);
+    for (let y = 0; y < rh; y += 2) for (let x = 0; x < rw; x += 2) {
+      const i = (y * rw + x) * 4;
+      if (A[i + 3] > 20 || O[i + 3] < 20) continue;
+      const dr = F[i] - P[i], dg = F[i + 1] - P[i + 1], db = F[i + 2] - P[i + 2];
+      if (Math.abs(dr) + Math.abs(dg) + Math.abs(db) > 150) continue;     // something else entirely (a pole, another car): not the object's surroundings
+      const c = ((y / cs) | 0) * gw + ((x / cs) | 0); sum[c * 3] += dr; sum[c * 3 + 1] += dg; sum[c * 3 + 2] += db; cnt[c]++;
     }
-  }
-
-  eraseObject(frame) {
-    const m = this.maskCanvas(frame);
-    if (!m || !this.data.plate) return;
-    const ctx = this.ctx, tmp = this.tmp ||= document.createElement('canvas');
-    tmp.width = m.canvas.width; tmp.height = m.canvas.height;
-    const t = tmp.getContext('2d');
-    t.clearRect(0, 0, tmp.width, tmp.height);
-    t.drawImage(this.data.plate, m.x, m.y, tmp.width, tmp.height, 0, 0, tmp.width, tmp.height);
-    t.globalCompositeOperation = 'destination-in';
-    t.drawImage(m.canvas, 0, 0);
-    t.globalCompositeOperation = 'source-over';
-    ctx.drawImage(tmp, m.x, m.y);
+    const val = new Float32Array(gw * gh * 3), known = new Uint8Array(gw * gh); let n = 0; const mean = [0, 0, 0];
+    for (let c = 0; c < gw * gh; c++) if (cnt[c]) { known[c] = 1; n++; for (let j = 0; j < 3; j++) { val[c * 3 + j] = sum[c * 3 + j] / cnt[c]; mean[j] += val[c * 3 + j]; } }
+    if (n) {
+      for (let c = 0; c < gw * gh; c++) if (!known[c]) for (let j = 0; j < 3; j++) val[c * 3 + j] = mean[j] / n;
+      for (let it = 0; it < 60; it++) for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+        const c = gy * gw + gx; if (known[c]) continue;
+        for (let j = 0; j < 3; j++) { let t = 0, k = 0; for (const [u, v] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = gx + u, b = gy + v; if (a >= 0 && b >= 0 && a < gw && b < gh) { t += val[(b * gw + a) * 3 + j]; k++; } } val[c * 3 + j] = t / k; }
+      }
+    }
+    const at = (x, y, j) => {   // bilinear sample of the grid, at pixel (x, y)
+      const fx = clamp01((x / cs - 0.5), gw - 1), fy = clamp01((y / cs - 0.5), gh - 1), x0 = fx | 0, y0 = fy | 0, x1 = Math.min(gw - 1, x0 + 1), y1 = Math.min(gh - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+      return (val[(y0 * gw + x0) * 3 + j] * (1 - tx) + val[(y0 * gw + x1) * 3 + j] * tx) * (1 - ty) + (val[(y1 * gw + x0) * 3 + j] * (1 - tx) + val[(y1 * gw + x1) * 3 + j] * tx) * ty;
+    };
+    const out = sg.createImageData(rw, rh), clamp255 = v => v < 0 ? 0 : v > 255 ? 255 : v;
+    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) {
+      const i = (y * rw + x) * 4, a = S[i + 3]; if (!a) continue;
+      for (let j = 0; j < 3; j++) out.data[i + j] = clamp255(P[i + j] + (n ? at(x, y, j) : 0));
+      out.data[i + 3] = a;
+    }
+    const patch = mk(); patch.getContext('2d').putImageData(out, 0, 0);
+    this.ctx.drawImage(patch, rx, ry);
   }
 
   // A frame's mask as an alpha canvas, dilated so the motion-blur halo is covered too; cached per frame.
@@ -482,15 +532,22 @@ export class Stage {
     ctx.fillStyle = '#fff'; ctx.fillText(text, x0 + 7 * k, y0 + h / 2 + 1); ctx.restore();
   }
 
-  sprite(x, y) {
+  sprite(x, y, {ground = false} = {}) {
     const s = this.data.sprite, m = this.data.spriteMeta;
     // The fit may follow the object's top or bottom edge (see fit.point); anchor the cut-out at the same point.
     const point = this.data.point, ax = point === 'top' ? m?.tx : point === 'bottom' ? m?.bx : m?.cx, ay = point === 'top' ? m?.ty : point === 'bottom' ? m?.by : m?.cy;
     if (s && m) {
       // Beside a veiled real object the forked one needs to stand apart: a fork-coloured glow.
       const ctx = this.ctx; ctx.save();
+      if (ground) {   // a car stands on the road: a soft contact shadow under it (the footage's own shadow is not part of the cut-out)
+        const cx = x - (ax - m.left) + m.width / 2, by = y - (ay - m.top) + m.height * 0.96, rx = m.width * 0.5, ry = Math.max(4, m.height * 0.09);
+        ctx.save(); ctx.translate(cx, by); ctx.scale(1, ry / rx); const g = ctx.createRadialGradient(0, 0, rx * 0.2, 0, 0, rx);
+        g.addColorStop(0, 'rgba(0,0,0,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rx, 0, 7); ctx.fill(); ctx.restore();
+      }
       if (this.data.plateSteady === false && this.forking) { ctx.shadowColor = COL.fork; ctx.shadowBlur = 16 * this.scale(); }
-      ctx.drawImage(s, x - (ax - m.left), y - (ay - m.top)); ctx.restore();
+      // Pulled back far, a small object (a ball) would be a speck: it is drawn up to ~16 screen px across, about its anchor.
+      const cs = this.forking && this.cam ? this.cam.s : 1, up = Math.max(1, 16 / (Math.max(m.width, m.height) * cs));
+      ctx.translate(x, y); ctx.scale(up, up); ctx.drawImage(s, -(ax - m.left), -(ay - m.top)); ctx.restore();
     }
     else { this.ctx.fillStyle = COL.fork; this.ctx.beginPath(); this.ctx.arc(x, y, this.radius(), 0, 7); this.ctx.fill(); }
   }
@@ -537,6 +594,8 @@ export class Stage {
     ctx.restore();
   }
 }
+
+const clamp01 = (v, hi) => Math.max(0, Math.min(hi, v));
 
 function wrap(ctx, text, width) {
   const out = []; let line = '';

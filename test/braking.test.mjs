@@ -105,6 +105,9 @@ test('fork: braking at the measured speed hits, and at 30 km/h stops short, with
   assert.match(slow.summary, /at 30 km\/h it stops 2\.5 m short/);
   assert.equal(slow.baseline[0][0], slow.path[0][0]);
   assert.ok(slow.speed.fork.at(-1)[1] === 0 && slow.speed.real[0][1] > 46);
+  // The bird's-eye strip draws from these numbers alone: reaction + braking = stopping, and the gap they are compared with.
+  const d = slow.hazard.distances;
+  near(d.reaction_m, 30 / 3.6 * 1.5, 0.06); near(d.braking_m, (30 / 3.6) ** 2 / 14, 0.06); near(d.stopping_m, d.reaction_m + d.braking_m, 0.11); assert.equal(d.gap_m, 20);
 });
 
 test('fork: someone steps out before the footage starts, by extrapolating back', () => {

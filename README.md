@@ -70,7 +70,8 @@ flowchart LR
    footage framed in the middle and the floor carried on beyond it. Any fork can be saved as an MP4 clip (recorded in
    the browser, labelled, ready to share). A car crossing the frame gets a braking fork instead: someone steps out at a
    point you click on the road, and the same car (at its measured speed or another) reacts for 1.5 s and brakes at
-   7 m/s², stopping short or reaching them at a stated speed. Both numbers are assumptions and every summary says so.
+   7 m/s², stopping short or reaching them at a stated speed, on the footage and on a bird's-eye strip of thinking and
+   braking distance drawn to scale. Both numbers are assumptions and every summary says so.
 
 ## Accuracy
 
