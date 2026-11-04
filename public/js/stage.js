@@ -51,7 +51,7 @@ export class Stage {
     this.forkEnd = end ?? (path ? path.at(-1)[0] : 0);
     this.video.style.visibility = this.forking ? 'hidden' : 'visible';
     this.stopFreeRun();
-    const from = (start ?? path[0][0]) - Math.round(this.data.fps * 0.4);
+    const from = (start ?? path?.[0]?.[0] ?? 0) - Math.round(this.data.fps * 0.4);
     // A story that begins before the footage (someone steps out while the car is still off-shot) pre-rolls on the first frame.
     if (this.forking && from < 0) this.startPreroll(from);
     else if (this.forking) this.seek(from, true);

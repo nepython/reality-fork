@@ -190,11 +190,17 @@ export function speed_survey({clip_ids, limit_kmh = 30} = {}) {
   if (!clips.length) return {clips, skipped, summary: 'No clip could be used: ' + (skipped.map(s => `${s.clip_id} (${s.reason})`).join('; ') || 'none given') + '.'};
   const n = clips.length, mean = clips.reduce((a, c) => a + c.speed_kmh, 0) / n, over = clips.filter(c => c.over_limit).length;
   const s = survey85(clips.map(c => ({kmh: c.speed_kmh, sigma: c.sigma_kmh})));
+  // The headline is the 85th percentile of the measured speeds, and its range is the Monte Carlo spread centred on it.
+  // The raw draws are not used as the range: adding each clip's noise widens the sample, so their median sits above the
+  // measured value when error bars are wide (8 junction clips, 4 Nov 2026: 33.5 km/h measured, a raw median of 36.8 and
+  // a raw 68% range of 33.5 to 42.4, which left the headline outside its own range).
+  const lo = s.p85 - (s.median - s.low), hi = s.p85 + (s.high - s.median);
   const result = {n, limit_kmh: limit, mean_kmh: round(mean, 1), p85_kmh: round(s.p85, 1),
-    p85_uncertainty: {median_kmh: round(s.median, 1), interval_68_kmh: [round(s.low, 1), round(s.high, 1)], method: 'Monte Carlo (4000 draws) over each clip\'s own speed error bar'},
+    p85_uncertainty: {interval_68_kmh: [round(lo, 1), round(hi, 1)], draws_median_kmh: round(s.median, 1),
+      method: 'Monte Carlo (4000 draws) over each clip\'s own speed error bar; the 68% spread of the draws, centred on the measured 85th percentile'},
     share_over_limit: round(over / n, 3), n_over_limit: over};
   result.summary = `Across ${n} measured vehicle${n > 1 ? 's' : ''} the average speed was ${Math.round(mean)} km/h and the 85th-percentile speed (the speed 85% of drivers stay under, which is what councils act on) ` +
-    `was about ${Math.round(s.median)} km/h (68% range ${Math.round(s.low)} to ${Math.round(s.high)}). ${over} of ${n} (${Math.round(100 * over / n)}%) were over the ${limit} km/h limit.` +
+    `was ${Math.round(s.p85)} km/h (68% range ${Math.round(lo)} to ${Math.round(hi)}, from each clip's error bar). ${over} of ${n} (${Math.round(100 * over / n)}%) were over the ${limit} km/h limit.` +
     (n < 20 ? ` With only ${n} clips this is a rough guide; more clips narrow it.` : '') + (skipped.length ? ` ${skipped.length} clip${skipped.length > 1 ? 's were' : ' was'} skipped.` : '');
   return {...result, clips, skipped};
 }
