@@ -1,6 +1,6 @@
 // The stage: the clip with its measurements drawn over it, and the fork, where the real object is erased from every
 // frame (SAM's mask filled from the clean plate) and redrawn on the path the changed physics gives it.
-const COL = {measured: '#ffd60a', fit: '#00c8ff', fork: '#ff40a0', mask: 'rgba(124, 92, 255, 0.38)'};
+const COL = {measured: '#ffd60a', fit: '#00c8ff', fork: '#ff40a0', mask: 'rgba(124, 92, 255, 0.38)', sam: '#7c5cff', samFill: 'rgba(124, 92, 255, 0.42)'};
 
 export class Stage {
   constructor({video, canvas, badge, onFrame}) {
@@ -10,6 +10,7 @@ export class Stage {
     this.show = {mask: true, path: true, law: true};
     this.frame = 0;
     this.forking = false;
+    this.scene = null;      // a director's act: (stage, frame) draws instead of the usual overlay (see director.js)
     this.last = document.createElement('canvas');
     this.loop = this.loop.bind(this);
     const tick = (now, meta) => {
@@ -24,6 +25,8 @@ export class Stage {
 
   load(src, info) {
     this.stopFreeRun();
+    this.scene = null; this.caption = null; this.video.pause(); this.video.playbackRate = 1;
+    this.maskCache = new WeakMap();
     this.data = {...info};
     this.forking = false;
     this.video.src = src;
@@ -81,7 +84,8 @@ export class Stage {
     this.frame = frame;
     const ctx = this.ctx, W = d.width, H = d.height;
     ctx.clearRect(0, 0, W, H);
-    if (this.forking) this.drawFork(frame);
+    if (this.scene) this.scene(this, frame);
+    else if (this.forking) this.drawFork(frame);
     else {
       if (this.show.mask && d.masks) this.drawMask(frame, COL.mask);
       if (this.show.law && d.fitPath) {
@@ -224,10 +228,14 @@ export class Stage {
   }
 
   // A frame's mask as an alpha canvas, dilated so the motion-blur halo is covered too; cached per frame.
-  maskCanvas(frame, pad = 6) {
-    const d = this.data, cache = this.maskCache ||= new Map(), key = frame + ':' + pad;
+  // The cache is per masks map: the director draws other objects' masks too, and a map must never see another's frames.
+  maskCanvas(frame, pad = 6, masks = this.data.masks) {
+    if (!masks) return null;
+    const all = this.maskCache ||= new WeakMap();
+    if (!all.has(masks)) all.set(masks, new Map());
+    const cache = all.get(masks), key = frame + ':' + pad;
     if (cache.has(key)) return cache.get(key);
-    const m = d.masks?.get(frame);
+    const m = masks.get(frame);
     if (!m) { cache.set(key, null); return null; }
     const w = m.right - m.left + 2 * pad, h = m.bottom - m.top + 2 * pad;
     const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -249,8 +257,8 @@ export class Stage {
     return out;
   }
 
-  drawMask(frame, color, pad = 0) {
-    const m = this.maskCanvas(frame, pad);
+  drawMask(frame, color, pad = 0, masks) {
+    const m = this.maskCanvas(frame, pad, masks);
     if (!m) return;
     const tmp = this.tmp2 ||= document.createElement('canvas');
     tmp.width = m.canvas.width; tmp.height = m.canvas.height;
@@ -260,6 +268,33 @@ export class Stage {
     t.fillStyle = color; t.fillRect(0, 0, tmp.width, tmp.height);
     t.globalCompositeOperation = 'source-over';
     this.ctx.drawImage(tmp, m.x, m.y);
+  }
+
+  // A mask filled and outlined (the outline is the mask grown a few pixels, minus the mask itself).
+  drawMaskOutlined(frame, masks, fill, stroke) {
+    const m = this.maskCanvas(frame, 0, masks);
+    if (!m) return false;
+    const k = Math.max(1.5, 2 * this.scale()), pad = Math.ceil(k) + 1, w = m.canvas.width + 2 * pad, h = m.canvas.height + 2 * pad;
+    const t = (this.tmp3 ||= document.createElement('canvas')); t.width = w; t.height = h;
+    const g = t.getContext('2d');
+    for (let a = 0; a < 8; a++) g.drawImage(m.canvas, pad + Math.cos(a * Math.PI / 4) * k, pad + Math.sin(a * Math.PI / 4) * k);
+    g.globalCompositeOperation = 'source-in'; g.fillStyle = stroke; g.fillRect(0, 0, w, h);
+    g.globalCompositeOperation = 'destination-out'; g.drawImage(m.canvas, pad, pad);
+    this.ctx.drawImage(t, m.x - pad, m.y - pad);
+    this.drawMask(frame, fill, 0, masks);
+    return true;
+  }
+
+  // A text pill on the picture, sized with the picture (so it reads on a 1280 px clip and on a 360 px one alike).
+  label(x, y, text, color, {align = 'center'} = {}) {
+    const ctx = this.ctx, k = this.scale() * 1.15;
+    ctx.save(); ctx.font = `600 ${14 * k}px ui-monospace, monospace`; ctx.textBaseline = 'middle';
+    const w = ctx.measureText(text).width + 14 * k, h = 24 * k, W = this.data.width, H = this.data.height;
+    let x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+    x0 = Math.max(6, Math.min(W - w - 6, x0)); const y0 = Math.max(6, Math.min(H - h - 6, y - h / 2));
+    ctx.fillStyle = 'rgba(8, 10, 18, 0.82)'; ctx.strokeStyle = color; ctx.lineWidth = 1.5 * k;
+    ctx.beginPath(); ctx.roundRect(x0, y0, w, h, 6 * k); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillText(text, x0 + 7 * k, y0 + h / 2 + 1); ctx.restore();
   }
 
   sprite(x, y) {

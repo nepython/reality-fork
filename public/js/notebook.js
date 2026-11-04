@@ -1,92 +1,118 @@
-// The lab notebook: the agent's run as it happens, one card per step, then the report.
+// The lab chat: the user's questions and forks as bubbles, the agent's run as assistant messages with inline results.
+// What is shown, and when, is decided by director.js; this file only builds and fills the messages.
 const unit = u => String(u ?? '').replace('^2', '²').replace('^3', '³').replace('deg', '°');
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-const num = (v, s) => {
+export const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+export const num = (v, s) => {
   if (v == null || !isFinite(v)) return '–';
   // Round the value to the precision its uncertainty supports (two significant figures of sigma).
   if (s && isFinite(s) && s > 0) { const d = Math.max(0, 1 - Math.floor(Math.log10(s))); return v.toFixed(Math.min(d, 6)); }
   return Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(3);
 };
-const TOOL = {
-  track_objects: a => ['sam', `SAM 3.1 · tracking <code>${esc(a.prompt)}</code> in every frame`],
-  set_scale: a => ['lab', `Setting the scale from ${esc(a.object || a.prompt)}: ${esc(a.real_size_m)} m ${esc(a.dimension)} (±${esc(a.size_uncertainty_m)} m)`],
+export const TOOL = {
+  track_objects: a => ['sam', `Tracking <code>${esc(a.prompt)}</code> in every frame`],
+  set_scale: a => ['lab', `Setting the scale from ${esc(a.object || a.prompt)}: ${+Number(a.real_size_m).toPrecision(3)} m ${esc(a.dimension)} (±${+Number(a.size_uncertainty_m).toPrecision(2)} m)`],
   fit_motion: a => ['lab', `Fitting laws of motion to <code>${esc(a.object)}</code>${a.models?.length ? ' (' + a.models.map(esc).join(', ') + ')' : ''}${Object.keys(a.fixed || {}).length ? ' with ' + esc(JSON.stringify(a.fixed)) + ' fixed' : ''}`],
-  check_overlay: a => ['lab', `Checking fit ${esc(a.fit_id)} against the footage`],
+  check_overlay: a => ['lab', `Checking the fit against the footage`],
   final_report: () => ['spark', 'Writing the report'],
 };
-const MODEL_NAME = {'constant-velocity': 'constant velocity', projectile: 'free flight', 'projectile-drag': 'flight with air drag',
+export const MODEL_NAME = {'constant-velocity': 'constant velocity', projectile: 'free flight', 'projectile-drag': 'flight with air drag',
   bounce: 'bouncing', pendulum: 'pendulum', incline: 'down a slope', oscillator: 'oscillation'};
+const WHO = {spark: 'Muse Spark', sam: 'SAM 3.1', lab: 'Lab', image: 'Muse Image', err: 'Problem'};
+// Runs saved before lib/agent.mjs filtered them can still hold markup or the stray chat-product line.
+export const strayLine = t => /<[a-z]+:function_calls|<invoke name=|feedback on this answer|type it here/i.test(t);
+
+// The value a law is best known by, as text: "g = 1.85 ± 0.18 m/s²", or "g unconstrained" when the data cannot pin it down.
+export function keyValue(m) {
+  const main = m.derived?.find(d => d.name === 'g') || m.derived?.[0];
+  if (!main) return {main, text: ''};
+  // A parameter the data cannot pin down (sigma far above its value) is shown as such, not as a number.
+  const loose = !isFinite(main.sigma) || Math.abs(main.sigma) > 3 * Math.abs(main.value);
+  return {main, loose, text: loose ? `${main.name} unconstrained` : `${main.name} = ${num(main.value, main.sigma)}${main.sigma ? ' ± ' + num(main.sigma, main.sigma) : ''} ${unit(main.unit)}`.trim()};
+}
 
 export class Notebook {
-  constructor({list, report, state}) { Object.assign(this, {list, reportEl: report, state}); this.pending = null; }
+  constructor({list, state, panel}) { Object.assign(this, {list, state, panel}); }
 
-  clear(note = '') { this.list.innerHTML = ''; this.reportEl.innerHTML = ''; this.state.textContent = note; this.pending = null; this.samCard = null; }
+  clear(note = '') { this.list.innerHTML = ''; this.state.textContent = note; this.welcome(); }
 
-  card(who, label, html = '', busy = false) {
+  // The empty chat says what a run will do, as the assistant's first message.
+  welcome() {
+    this.msg('spark', `Ask about the motion in the clip, then press <b>Run the lab</b>. Here is what happens:
+      <ol class="intro">
+        <li><span class="chip spark">Muse Spark</span> watches your clip and plans the experiment: what moves, what sets the scale.</li>
+        <li><span class="chip sam">SAM 3.1</span> follows the object through every frame, pixel-accurate, giving its path to a fraction of a pixel.</li>
+        <li><b>Laws are fitted and ranked</b>: free flight, drag, bouncing, pendulum, slope, spring. Every number gets an error bar.</li>
+        <li><b>The agent checks itself</b>: it draws its law over the real frames, looks, and fixes what doesn't match.</li>
+        <li><span class="chip image">Muse Image</span> <b>Fork reality</b>: replay your footage on the Moon, without air, or bouncier.</li>
+      </ol>`, {intro: true});
+  }
+
+  scroll() { this.list.scrollTop = this.list.scrollHeight; }
+
+  user(text) {
     const li = document.createElement('li');
-    li.className = 'step';
-    li.innerHTML = `<div class="who ${who}">${busy ? '<i class="spin"></i>' : ''}${esc(label)}</div><div class="body">${html}</div>`;
-    this.list.append(li);
-    this.list.scrollTop = this.list.scrollHeight;
+    li.className = 'msg user';
+    li.innerHTML = '<div class="bubble"></div>';
+    li.firstChild.textContent = text;
+    this.list.querySelector('.intro')?.closest('.msg')?.classList.add('old');
+    this.list.append(li); this.scroll();
+    return li;
+  }
+
+  // An assistant message with a header chip naming who acts; `busy` adds a spinner until settle().
+  msg(who, html = '', {busy = false, intro = false} = {}) {
+    const li = document.createElement('li');
+    li.className = 'msg assistant' + (intro ? ' intro-msg' : '');
+    li.innerHTML = `<div class="who"><span class="chip ${who === 'lab' ? 'lab' : who === 'err' ? 'err' : who}">${WHO[who] || who}</span>${busy ? '<i class="spin"></i>' : ''}</div><div class="body">${html}</div>`;
+    this.list.append(li); this.scroll();
     return li;
   }
   settle(li) { li?.querySelector('.spin')?.remove(); }
+  body(li) { return li.querySelector('.body'); }
+  add(li, html) { li.querySelector('.body').insertAdjacentHTML('beforeend', html); this.scroll(); }
 
-  event(ev) {
-    switch (ev.type) {
-      // Runs saved before lib/agent.mjs filtered them can still hold markup or the stray chat-product line.
-      case 'say': if (!/<[a-z]+:function_calls|<invoke name=|feedback on this answer|type it here/i.test(ev.text)) this.card('spark', 'Muse Spark', esc(ev.text)); break;
-      case 'call': {
-        const [who, text] = (TOOL[ev.name] || (() => ['lab', ev.name]))(ev.args || {});
-        this.pending = this.card(who, who === 'sam' ? 'SAM 3.1' : who === 'spark' ? 'Muse Spark' : 'Lab', text, true);
-        if (ev.name === 'track_objects') { this.samCard = this.pending; this.pending.insertAdjacentHTML('beforeend', '<div class="bar"><i></i></div>'); }
-        break;
-      }
-      case 'sam': if (this.samCard) this.samCard.querySelector('.bar i').style.width = Math.min(100, 100 * ev.frames / Math.max(1, ev.of)) + '%'; break;
-      case 'overlay': if (this.pending) this.pending.querySelector('.body').insertAdjacentHTML('beforeend', `<img src="${ev.image}" alt="Fitted law drawn over six frames">`); break;
-      case 'result': this.result(ev); break;
-      case 'report': this.report(ev.report); break;
-      case 'error': this.card('err', 'Problem', esc(ev.message)); this.state.textContent = ''; break;
-      case 'done': this.state.textContent = ev.replay ? 'replayed from a saved run' : 'done'; break;
-    }
+  toolCall(name, args) {
+    const [who, text] = (TOOL[name] || (() => ['lab', esc(name)]))(args || {});
+    const li = this.msg(who, text, {busy: true});
+    if (name === 'track_objects') this.add(li, '<div class="bar"><i></i></div>');
+    return li;
   }
+  setBar(li, frac) { const i = li?.querySelector('.bar i'); if (i) i.style.width = Math.max(0, Math.min(1, frac)) * 100 + '%'; }
 
-  result({name, result: r}) {
-    const li = this.pending; this.settle(li);
-    if (!li) return;
-    const body = li.querySelector('.body');
-    if (r?.error) { body.insertAdjacentHTML('beforeend', `<div style="color:var(--warn)">${esc(r.error)}</div>`); return; }
-    if (name === 'track_objects') {
-      li.querySelector('.bar')?.remove();
-      body.insertAdjacentHTML('beforeend', r.found
-        ? `<table><tr><th>object</th><th>frames</th><th>moves</th><th>conf.</th></tr>${r.objects.map(o => `<tr><td>${esc(o.object)}</td><td>${o.frames_seen}</td><td>${o.moving ? 'yes' : 'no'}</td><td>${o.mean_confidence ?? '–'}</td></tr>`).join('')}</table>`
-        : `<div class="muted">${esc(r.note || 'nothing found')}</div>`);
-    } else if (name === 'set_scale') {
-      body.insertAdjacentHTML('beforeend', `<div class="mono" style="margin-top:4px">1 m = ${num(r.pixels_per_metre)} px <span class="muted">(±${Math.round(100 * r.relative_uncertainty)}%)</span></div>`);
-    } else if (name === 'fit_motion') {
-      const rows = r.ranked.map((m, i) => {
-        const main = m.derived.find(d => d.name === 'g') || m.derived[0];
-        // A parameter the data cannot pin down (sigma far above its value) is shown as such, not as a number.
-        const loose = main && (!isFinite(main.sigma) || Math.abs(main.sigma) > 3 * Math.abs(main.value));
-        const val = !main ? '' : loose ? `${esc(main.name)} unconstrained` : `${esc(main.name)} ${num(main.value, main.sigma)}${main.sigma ? '±' + num(main.sigma, main.sigma) : ''} ${esc(unit(main.unit))}`;
-        return `<tr class="${i ? '' : 'best'}"><td>${esc(MODEL_NAME[m.model] || m.model)}</td><td>${i ? '+' + num(m.dBIC) : 'best'}</td><td>${m.rms_px != null ? num(m.rms_px) + ' px' : ''}</td><td>${val}</td></tr>`;
-      }).join('');
-      body.insertAdjacentHTML('beforeend', `<table><tr><th>law</th><th>ΔBIC</th><th>rms</th><th>key value</th></tr>${rows}</table>`);
-    } else if (name === 'check_overlay') {
-      body.insertAdjacentHTML('beforeend', `<div class="mono muted" style="margin-top:4px">worst miss ${num(r.worst_error_px)} px (object radius ${num(r.object_radius_px)} px)</div>`);
+  trackTable(li, r) {
+    li.querySelector('.bar')?.remove();
+    this.add(li, r.found
+      ? `<table><tr><th>object</th><th>frames</th><th>moves</th><th>conf.</th></tr>${r.objects.map(o => `<tr><td>${esc(o.object)}</td><td>${o.frames_seen}</td><td>${o.moving ? 'yes' : 'no'}</td><td>${o.mean_confidence ?? '–'}</td></tr>`).join('')}</table>`
+      : `<div class="muted">${esc(r.note || 'nothing found')}</div>`);
+  }
+  scaleLine(li, r) { this.add(li, `<div class="mono line">1 m = ${num(r.pixels_per_metre)} px <span class="muted">(±${Math.round(100 * r.relative_uncertainty)}%)</span></div>`); }
+  checkLine(li, r) { this.add(li, `<div class="mono muted line">worst miss ${num(r.worst_error_px)} px (object radius ${num(r.object_radius_px)} px)</div>`); }
+  warn(li, text) { this.add(li, `<div class="warn line">${esc(text)}</div>`); }
+  image(li, src) { this.add(li, `<img src="${src}" alt="The fitted law drawn over six frames of the footage">`); }
+
+  // The ranked laws as a table whose rows appear one by one (`gap` ms apart; 0 = all at once).
+  async fitTable(li, r, ctl, gap = 330) {
+    const head = '<tr><th>law</th><th>ΔBIC</th><th>rms</th><th>key value</th></tr>';
+    this.add(li, `<table class="laws">${head}</table>`);
+    const table = li.querySelector('table.laws:last-of-type');
+    for (const [i, m] of r.ranked.entries()) {
+      table.insertAdjacentHTML('beforeend', `<tr class="${i ? '' : 'best'} row-in"><td>${esc(MODEL_NAME[m.model] || m.model)}</td><td>${i ? '+' + num(m.dBIC) : 'best'}</td><td>${m.rms_px != null ? num(m.rms_px) + ' px' : ''}</td><td>${esc(keyValue(m).text)}</td></tr>`);
+      this.scroll();
+      if (gap && i < r.ranked.length - 1) await ctl.sleep(gap);
     }
-    this.pending = null;
   }
 
   report(rep) {
-    this.settle(this.pending); this.pending = null;
-    const rows = (rep.measurements || []).map(m => `<div class="meas-row"><span class="n">${esc(m.name)}</span>
+    const rows = (rep.measurements || []).map(m => {
+      // An error bar drawn against ±50%: the whisker's length is the relative uncertainty, so a tight value looks tight.
+      const rel = m.sigma && m.value ? Math.min(0.5, Math.abs(m.sigma / m.value)) : 0;
+      return `<div class="meas-row"><span class="n">${esc(m.name)}</span>
       <span class="v">${num(m.value, m.sigma)}${m.sigma ? ` <small>± ${num(m.sigma, m.sigma)}</small>` : ''} <small>${esc(unit(m.unit))}</small></span>
-      ${m.compare_to ? `<span class="c">${esc(m.compare_to)}</span>` : ''}</div>`).join('');
-    this.reportEl.innerHTML = `<div class="report"><div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
-      <h2>${esc(rep.headline)}</h2><span class="conf ${esc(rep.confidence)}">${esc(rep.confidence)} confidence</span></div>
+      ${m.sigma ? `<span class="eb" title="±${(100 * Math.abs(m.sigma / m.value)).toFixed(1)}% uncertainty"><i style="left:${50 - rel * 100}%;width:${rel * 200}%"></i><b></b></span>` : ''}
+      ${m.compare_to ? `<span class="c">${esc(m.compare_to)}</span>` : ''}</div>`;
+    }).join('');
+    return this.msg('spark', `<div class="report"><div class="rep-head"><h2>${esc(rep.headline)}</h2><span class="conf ${esc(rep.confidence)}">${esc(rep.confidence)} confidence</span></div>
       <p>${esc(rep.answer)}</p>${rows}
-      ${rep.assumptions?.length ? `<ul class="assume">${rep.assumptions.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}</div>`;
-    this.reportEl.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+      ${rep.assumptions?.length ? `<ul class="assume">${rep.assumptions.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}</div>`);
   }
 }

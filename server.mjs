@@ -167,9 +167,9 @@ async function api(req, res, url) {
     const emit = ev => res.write(`data: ${JSON.stringify(ev)}\n\n`);
     const file = runFile(clip.id, q.q);
     if (fs.existsSync(file) && q.live !== '1') {
-      // Replay a finished run with its original pacing compressed, so the notebook still reads as a story.
+      // Replay a finished run quickly: the browser's director (public/js/director.js) decides how long each step stays up.
       const run = JSON.parse(fs.readFileSync(file, 'utf8'));
-      for (const ev of run.events) { emit(ev); await new Promise(r => setTimeout(r, ev.type === 'sam' ? 8 : 220)); }
+      for (const ev of run.events) { emit(ev); await new Promise(r => setTimeout(r, ev.type === 'sam' ? 4 : 60)); }
       emit({type: 'done', replay: true});
       return res.end();
     }
@@ -201,8 +201,9 @@ async function api(req, res, url) {
 
   if (url.pathname === '/api/masks') {
     // The raw SAM text of the run's object, for the browser to decode with @meta-sam/parser (from cache only).
-    const run = latestRun(clip.id);
-    const prompt = run?.prompts?.[q.object || run?.report?.object];
+    // A live run is not saved until it ends, so the browser can name the prompt itself (from the `tracks` event).
+    const run = q.prompt ? null : latestRun(clip.id);
+    const prompt = q.prompt || run?.prompts?.[q.object || run?.report?.object];
     if (!prompt) return send(res, 404, {error: 'no masks'});
     const raw = samCachedOnly({mediaHash: hashOf(fs.readFileSync(clip.file)), prompt});
     return raw ? send(res, 200, {prompt, text: raw.text}) : send(res, 404, {error: 'not cached'});

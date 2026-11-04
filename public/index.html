@@ -61,22 +61,17 @@
     </figure>
   </section>
 
-  <aside class="notebook">
-    <form id="ask" class="ask">
-      <input id="question" type="text" placeholder="Ask about the motion… e.g. what is gravity here?" autocomplete="off">
-      <button type="button" id="mic" class="icon" title="Ask by voice (Muse Voice Transcribe)" aria-label="Ask by voice">🎙</button>
-      <button type="submit" id="run" class="primary">Run the lab</button>
-    </form>
-    <div class="nb-head"><span>Lab notebook</span><span id="nbState" class="muted"></span></div>
-    <ol id="steps" class="steps"></ol>
-    <ol id="intro" class="intro">
-      <li><span class="chip spark">Muse Spark</span> watches your clip and plans the experiment: what moves, what sets the scale.</li>
-      <li><span class="chip sam">SAM 3.1</span> follows the object through every frame, pixel-accurate, giving its path to a fraction of a pixel.</li>
-      <li><b>Laws are fitted and ranked</b>: free flight, drag, bouncing, pendulum, slope, spring. Every number gets an error bar.</li>
-      <li><b>The agent checks itself</b>: it draws its law over the real frames, looks, and fixes what doesn't match.</li>
-      <li><span class="chip image">Muse Image</span> <b>Fork reality</b>: replay your footage on the Moon, without air, or bouncier.</li>
-    </ol>
-    <div id="report"></div>
+  <aside class="chat" id="chat" aria-label="Lab chat">
+    <div class="chat-head"><span>Lab chat</span><span id="nbState" class="muted"></span></div>
+    <ol id="steps" class="msgs" aria-live="polite" aria-relevant="additions"></ol>
+    <div class="composer-wrap">
+      <button type="button" id="skip" class="skip" hidden>Skip to results</button>
+      <form id="ask" class="ask">
+        <input id="question" type="text" placeholder="Ask about the motion… e.g. what is gravity here?" autocomplete="off" aria-label="Your question">
+        <button type="button" id="mic" class="icon" title="Ask by voice (Muse Voice Transcribe)" aria-label="Ask by voice">🎙</button>
+        <button type="submit" id="run" class="primary">Run the lab</button>
+      </form>
+    </div>
   </aside>
 </main>
 
